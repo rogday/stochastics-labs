@@ -1,30 +1,29 @@
 #include <map>
-#include <vector>
+#include <string>
 #include <random>
 #include <iostream>
 
 int main(int argc, char *argv[]) {
+  if (argc < 5) {
+    std::cerr << "not enough arguments!\nlambda, m1, m2, max_time";
+    return -1;
+  }
+
   using distribution_t = std::exponential_distribution<double>;
 
-  std::string events[3] = {"client arrived", "first finished",
-                           "second finished"};
+  std::string events[3] = {"ARRIVED", "FIRST_FINISHED", "SECOND_FINISHED"};
   std::string states[7] = {"EMPTY", "FIRST", "SECOND", "WAITING",
                            "BOTH",  "DROP",  "INVALID"};
 
   enum event_t { ARRIVED = 0, FIRST_FINISHED, SECOND_FINISHED };
   enum state_t { EMPTY = 0, FIRST, SECOND, WAITING, BOTH, DROP, INVALID };
 
-  if (argc < 5) {
-    std::cerr << "not enough arguments!\nlambda, m1, m2, max_time";
-    return -1;
-  }
-
   // clang-format off
   //                         EMPTY    FIRST    SECOND   WAITING  BOTH
-  std::vector<std::vector<state_t>> event_to_state = {
+  state_t event_to_state[3][5] = {
       /* ARRIVED */         {FIRST,   DROP,    BOTH,    DROP,    DROP},
       /* FIRST_FINISHED */  {INVALID, SECOND,  INVALID, INVALID, WAITING},
-      /* SECOND_FINISHED */ {INVALID, INVALID, EMPTY,   SECOND,  SECOND},
+      /* SECOND_FINISHED */ {INVALID, INVALID, EMPTY,   SECOND,  FIRST},
   };
   // clang-format on
 
