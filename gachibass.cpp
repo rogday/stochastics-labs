@@ -19,14 +19,14 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  //Марк, не бей, автоформат всё испортил, но ты видел, что я пытался
-
-  //                 EMPTY     FIRST    SECOND   WAITING  BOTH
+  // clang-format off
+  //                         EMPTY    FIRST    SECOND   WAITING  BOTH
   std::vector<std::vector<state_t>> event_to_state = {
-      /* ARRIVED */ {FIRST, DROP, BOTH, DROP, DROP},
-      /* FIRST_FINISHED */ {INVALID, SECOND, INVALID, INVALID, WAITING},
-      /* SECOND_FINISHED */ {INVALID, INVALID, EMPTY, SECOND, SECOND},
+      /* ARRIVED */         {FIRST,   DROP,    BOTH,    DROP,    DROP},
+      /* FIRST_FINISHED */  {INVALID, SECOND,  INVALID, INVALID, WAITING},
+      /* SECOND_FINISHED */ {INVALID, INVALID, EMPTY,   SECOND,  SECOND},
   };
+  // clang-format on
 
   double lambda = atof(argv[1]);
   double m1 = atof(argv[2]);
@@ -60,6 +60,10 @@ int main(int argc, char *argv[]) {
     while (times[event_t(i)] < time_max)
       inserter(event_t(i), times[i], dists[i]);
 
+  double prev = 0.0;      // debug
+  double sum = 0.0;       // debug
+  std::size_t served = 0; // debug
+
   state_t state = EMPTY;
   for (auto [time, event] : timeline) {
     if (argc > 5) {
@@ -81,11 +85,19 @@ int main(int argc, char *argv[]) {
       ++stats.drop;
       break;
 
-    default:
+    default:                // valid event
+      if (event == ARRIVED) // for debug
+        prev = time;
+      else if (event == FIRST_FINISHED) {
+        ++served;
+        sum += time - prev;
+      }
+
       state = new_state;
       break;
     }
   }
 
   std::cout << "dropout: " << stats.drop / double(stats.clients) << std::endl;
+  std::cout << "[DEBUG]: " << sum / served << std::endl;
 }
