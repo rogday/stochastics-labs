@@ -40,6 +40,7 @@ int main(int argc, char *argv[]) {
   struct stats_t {
     std::size_t state_counts[DROP]{};           // max feasible event - BOTH
     std::size_t state_counts_with_drop[DROP]{}; // max feasible event - BOTH
+    double time_in_state[DROP]{};
     double served_time = 0.0;
     std::size_t served_clients = 0;
     std::size_t arrived_clients = 0;
@@ -65,8 +66,10 @@ int main(int argc, char *argv[]) {
     while (times[event_t(i)] < time_max)
       inserter(event_t(i), times[i], dists[i]);
 
+  double prev = 0;
   state_t state = EMPTY;
   std::queue<double> arriving_times;
+
   for (auto [time, event] : timeline) {
     if (argc > 5) {
       std::cout << "[PROCESSING]: " << time << " " << event_names[event]
@@ -97,8 +100,12 @@ int main(int argc, char *argv[]) {
         ++stats.served_clients;
       }
 
+      stats.time_in_state[state] += time - prev;
+      prev = time;
+
       state = new_state;
       ++stats.state_counts[state];
+
       break;
     }
   }
@@ -108,8 +115,8 @@ int main(int argc, char *argv[]) {
                  std::begin(stats.state_counts_with_drop),
                  std::plus<std::size_t>());
 
-  auto report = [&state_names](std::size_t counts[]) {
-    std::size_t events = std::accumulate(counts, counts + DROP, 0);
+  auto report = [&state_names](auto counts) {
+    auto events = std::accumulate(counts, counts + DROP, 0.0);
 
     for (std::size_t i = 0; i < DROP; ++i)
       std::cout << state_names[i] << ": " << counts[i] / double(events)
@@ -117,6 +124,7 @@ int main(int argc, char *argv[]) {
     std::cout << std::endl;
   };
 
+  report(stats.time_in_state);
   report(stats.state_counts);
   report(stats.state_counts_with_drop);
 
