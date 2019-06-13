@@ -2,6 +2,8 @@
 #include <string>
 #include <random>
 #include <iostream>
+#include <numeric>
+#include <algorithm>
 
 int main(int argc, char *argv[]) {
   if (argc < 5) {
@@ -11,9 +13,9 @@ int main(int argc, char *argv[]) {
 
   using distribution_t = std::exponential_distribution<double>;
 
-  std::string events[3] = {"ARRIVED", "FIRST_FINISHED", "SECOND_FINISHED"};
-  std::string states[7] = {"EMPTY", "FIRST", "SECOND", "WAITING",
-                           "BOTH",  "DROP",  "INVALID"};
+  std::string event_names[3] = {"ARRIVED", "FIRST_FINISHED", "SECOND_FINISHED"};
+  std::string state_names[7] = {"EMPTY", "FIRST", "SECOND", "WAITING",
+                                "BOTH",  "DROP",  "INVALID"};
 
   enum event_t { ARRIVED = 0, FIRST_FINISHED, SECOND_FINISHED };
   enum state_t { EMPTY = 0, FIRST, SECOND, WAITING, BOTH, DROP, INVALID };
@@ -34,10 +36,11 @@ int main(int argc, char *argv[]) {
 
   std::mt19937_64 generator(std::random_device{}());
 
-  struct stat_t {
+  struct stats_t {
+    std::size_t state_counts[DROP]{};           // max feasible event - BOTH
+    std::size_t state_counts_with_drop[DROP]{}; // max feasible event - BOTH
     std::size_t clients = 0;
     std::size_t drop = 0;
-    double average_workload = 0;
   } stats;
 
   double times[3]{};
@@ -66,9 +69,9 @@ int main(int argc, char *argv[]) {
   state_t state = EMPTY;
   for (auto [time, event] : timeline) {
     if (argc > 5) {
-      std::cout << "[PROCESSING]: " << time << " " << events[event]
+      std::cout << "[PROCESSING]: " << time << " " << event_names[event]
                 << std::endl;
-      std::cout << "[INFO]: " << states[state] << std::endl;
+      std::cout << "[INFO]: " << state_names[state] << std::endl;
     }
 
     if (event == ARRIVED)
@@ -81,6 +84,7 @@ int main(int argc, char *argv[]) {
       break;
 
     case DROP:
+      ++stats.state_counts_with_drop[state];
       ++stats.drop;
       break;
 
@@ -93,9 +97,27 @@ int main(int argc, char *argv[]) {
       }
 
       state = new_state;
+      ++stats.state_counts[state];
       break;
     }
   }
+
+  std::transform(std::begin(stats.state_counts), std::end(stats.state_counts),
+                 std::begin(stats.state_counts_with_drop),
+                 std::begin(stats.state_counts_with_drop),
+                 std::plus<std::size_t>());
+
+  auto report = [&state_names](std::size_t counts[]) {
+    std::size_t events = std::accumulate(counts, counts + DROP, 0);
+
+    for (std::size_t i = 0; i < DROP; ++i)
+      std::cout << state_names[i] << ": " << counts[i] / double(events)
+                << std::endl;
+    std::cout << std::endl;
+  };
+
+  report(stats.state_counts);
+  report(stats.state_counts_with_drop);
 
   std::cout << "dropout: " << stats.drop / double(stats.clients) << std::endl;
   std::cout << "[DEBUG]: " << sum / served << std::endl;
