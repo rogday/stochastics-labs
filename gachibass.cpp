@@ -4,6 +4,7 @@
 #include <iostream>
 #include <numeric>
 #include <algorithm>
+#include <queue>
 
 int main(int argc, char *argv[]) {
   if (argc < 5) {
@@ -39,8 +40,10 @@ int main(int argc, char *argv[]) {
   struct stats_t {
     std::size_t state_counts[DROP]{};           // max feasible event - BOTH
     std::size_t state_counts_with_drop[DROP]{}; // max feasible event - BOTH
-    std::size_t clients = 0;
-    std::size_t drop = 0;
+    double served_time = 0.0;
+    std::size_t served_clients = 0;
+    std::size_t arrived_clients = 0;
+    std::size_t dropped_clients = 0;
   } stats;
 
   double times[3]{};
@@ -62,11 +65,8 @@ int main(int argc, char *argv[]) {
     while (times[event_t(i)] < time_max)
       inserter(event_t(i), times[i], dists[i]);
 
-  double prev = 0.0;      // debug
-  double sum = 0.0;       // debug
-  std::size_t served = 0; // debug
-
   state_t state = EMPTY;
+  std::queue<double> arriving_times;
   for (auto [time, event] : timeline) {
     if (argc > 5) {
       std::cout << "[PROCESSING]: " << time << " " << event_names[event]
@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (event == ARRIVED)
-      ++stats.clients;
+      ++stats.arrived_clients;
 
     state_t new_state = event_to_state[event][state];
 
@@ -85,15 +85,16 @@ int main(int argc, char *argv[]) {
 
     case DROP:
       ++stats.state_counts_with_drop[state];
-      ++stats.drop;
+      ++stats.dropped_clients;
       break;
 
-    default:                // valid event
-      if (event == ARRIVED) // for debug
-        prev = time;
-      else if (event == FIRST_FINISHED) {
-        ++served;
-        sum += time - prev;
+    default:
+      if (event == ARRIVED)
+        arriving_times.push(time);
+      else if (event == SECOND_FINISHED) {
+        stats.served_time += time - arriving_times.front();
+        arriving_times.pop();
+        ++stats.served_clients;
       }
 
       state = new_state;
@@ -119,6 +120,9 @@ int main(int argc, char *argv[]) {
   report(stats.state_counts);
   report(stats.state_counts_with_drop);
 
-  std::cout << "dropout: " << stats.drop / double(stats.clients) << std::endl;
-  std::cout << "[DEBUG]: " << sum / served << std::endl;
+  std::cout << "dropout: "
+            << stats.dropped_clients / double(stats.arrived_clients)
+            << std::endl;
+  std::cout << "average serving time: "
+            << stats.served_time / double(stats.served_clients) << std::endl;
 }
