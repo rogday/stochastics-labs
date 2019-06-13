@@ -21,6 +21,8 @@ int main(int argc, char *argv[]) {
   enum event_t { ARRIVED = 0, FIRST_FINISHED, SECOND_FINISHED };
   enum state_t { EMPTY = 0, FIRST, SECOND, WAITING, BOTH, DROP, INVALID };
 
+  std::size_t state_to_clients[DROP] = {0, 1, 1, 2, 2};
+
   // clang-format off
   //                         EMPTY    FIRST    SECOND   WAITING  BOTH
   state_t event_to_state[3][5] = {
@@ -38,11 +40,15 @@ int main(int argc, char *argv[]) {
   std::mt19937_64 generator(std::random_device{}());
 
   struct stats_t {
-    std::size_t state_counts[DROP]{};           // max feasible event - BOTH
-    std::size_t state_counts_with_drop[DROP]{}; // max feasible event - BOTH
+    std::size_t state_counts[DROP]{}; // max feasible event - BOTH
+    std::size_t state_counts_with_drop[DROP]{};
+
     double time_in_state[DROP]{};
+    double time_in_client[3]{}; // roflanEbalo
+
     double served_time = 0.0;
     std::size_t served_clients = 0;
+
     std::size_t arrived_clients = 0;
     std::size_t dropped_clients = 0;
   } stats;
@@ -101,6 +107,7 @@ int main(int argc, char *argv[]) {
       }
 
       stats.time_in_state[state] += time - prev;
+      stats.time_in_client[state_to_clients[state]] += time - prev;
       prev = time;
 
       state = new_state;
@@ -115,7 +122,9 @@ int main(int argc, char *argv[]) {
                  std::begin(stats.state_counts_with_drop),
                  std::plus<std::size_t>());
 
-  auto report = [&state_names](auto counts) {
+  auto report = [&state_names](std::string_view title, auto counts) {
+    std::cout << title << std::endl;
+
     auto events = std::accumulate(counts, counts + DROP, 0.0);
 
     for (std::size_t i = 0; i < DROP; ++i)
@@ -124,13 +133,20 @@ int main(int argc, char *argv[]) {
     std::cout << std::endl;
   };
 
-  report(stats.time_in_state);
-  report(stats.state_counts);
-  report(stats.state_counts_with_drop);
+  report("time in states: ", stats.time_in_state);
+  report("entries in states: ", stats.state_counts);
+  report("entries in states with dropouts: ", stats.state_counts_with_drop);
 
   std::cout << "dropout: "
             << stats.dropped_clients / double(stats.arrived_clients)
             << std::endl;
+
   std::cout << "average serving time: "
             << stats.served_time / double(stats.served_clients) << std::endl;
+
+  std::cout << "average number of clients: "
+            << (stats.time_in_client[1] + 2 * stats.time_in_client[2]) /
+                   std::accumulate(std::begin(stats.time_in_client),
+                                   std::end(stats.time_in_client), 0.0)
+            << std::endl;
 }
