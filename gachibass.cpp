@@ -149,4 +149,8 @@ int main(int argc, char *argv[]) {
                    std::accumulate(std::begin(stats.time_in_client),
                                    std::end(stats.time_in_client), 0.0)
             << std::endl;
+
+  // arr=(10 10 10); for i in {0..2}; do for param in {1..100}; do
+  // darr=("${arr[@]}"); darr[i]=${param}; echo "${darr[@]}" >> ../out.txt &&
+  // ./lab2.exe ${darr[@]} 1000000 >> ../out.txt; done; done
 }
