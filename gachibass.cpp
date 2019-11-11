@@ -103,7 +103,8 @@ int main(int argc, char *argv[]) {
   double m2 = atof(argv[3]);
   std::uint64_t iterations = atoll(argv[4]) * 1'000'000;
 
-  std::mt19937_64 generator(std::random_device{}());
+  auto seed = std::random_device{}();
+  std::mt19937_64 generator(seed);
   distribution_t dists[3] = {distribution_t(lambda), distribution_t(m1),
                              distribution_t(m2)}; // mean = 1/param
 
@@ -145,7 +146,7 @@ int main(int argc, char *argv[]) {
     state_t new_state = event_to_state[event.event][state];
     switch (new_state) {
     case INVALID:
-      std::cerr << "ERROR: INVALID STATE REACHED" << std::endl;
+      std::cerr << "ERROR: INVALID STATE REACHED, SEED: " << seed << std::endl;
       return EXIT_FAILURE;
 
     case DROP:
