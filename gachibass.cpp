@@ -103,7 +103,7 @@ int main(int argc, char *argv[]) {
   double m2 = atof(argv[3]);
   std::uint64_t iterations = atoll(argv[4]) * 1'000'000;
 
-  auto seed = std::random_device{}();
+  auto seed = (argc >= 6) ? (atoll(argv[5])) : (std::random_device{}());
   std::mt19937_64 generator(seed);
   distribution_t dists[3] = {distribution_t(lambda), distribution_t(m1),
                              distribution_t(m2)}; // mean = 1/param
@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
     auto event = window.top();
     window.pop();
 
-    if (argc > 5)
+    if (argc >= 6 && iterations - i < 100)
       debug_view(event, state);
 
     switch (event.event) {
