@@ -15,7 +15,7 @@ enum state_t { EMPTY, FIRST, SECOND, WAITING, BOTH, DROP, INVALID };
 
 using distribution_t = std::function<double()>;
 
-using pair_t = struct {
+struct pair_t {
   double time;
   event_t event;
 };
@@ -162,10 +162,14 @@ private:
       {"ARRIVED", "FIRST_FINISHED", "SECOND_FINISHED"}};
   static constexpr std::array<const char *, 7> state_names{
       {"EMPTY", "FIRST", "SECOND", "WAITING", "BOTH", "DROP", "INVALID"}};
+
+  // clang-format off
   static constexpr std::array<std::array<state_t, 5>, 3> event_to_state{
-      {{FIRST, DROP, BOTH, DROP, DROP},
-       {INVALID, SECOND, INVALID, INVALID, WAITING},
-       {INVALID, INVALID, EMPTY, SECOND, FIRST}}};
+    //                      EMPTY    FIRST    SECOND   WAITING  BOTH
+    /* ARRIVED */         {{FIRST,   DROP,    BOTH,    DROP,    DROP},
+    /* FIRST_FINISHED */   {INVALID, SECOND,  INVALID, INVALID, WAITING},
+    /* SECOND_FINISHED */  {INVALID, INVALID, EMPTY,   SECOND,  FIRST}}};
+  // clang-format on
 
   static constexpr std::array<size_t, DROP> state_to_clients{0, 1, 1, 2, 2};
 
@@ -214,4 +218,6 @@ int main(int argc, char **argv) {
   }
 
   simul.print_report();
+
+  return EXIT_SUCCESS;
 }
