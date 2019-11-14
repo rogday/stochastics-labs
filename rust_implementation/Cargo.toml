@@ -1,0 +1,14 @@
+[package]
+name = "sim"
+version = "1.0.0"
+authors = ["rogday <rogday@test.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.7"
+rand_distr = "0.2"
+ordered-float = "1.0"
+enum-utils = "0.1"
+structopt = "0.3"
