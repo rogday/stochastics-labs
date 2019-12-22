@@ -1,26 +1,26 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use rand_distr::Exp;
 
+use std::collections::BTreeMap;
 use structopt::StructOpt;
 
 mod shoeshine_shop {
     use std::cmp::Reverse;
-    use std::collections::{BinaryHeap, VecDeque};
-    use std::convert::TryInto;
+    use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 
     use ordered_float::*;
     use rand::rngs::StdRng;
     use rand_distr::Distribution;
 
-    #[derive(Copy, Clone, Debug, PartialEq, Ord, Eq, PartialOrd, enum_utils::TryFromRepr)]
+    #[derive(Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd)]
     #[repr(usize)]
-    enum Event {
+    pub enum Event {
         Arrived = 0,
         FirstFinished,
         SecondFinished,
     }
 
-    #[derive(Copy, Clone, Debug, PartialEq, Ord, Eq, PartialOrd, enum_utils::TryFromRepr)]
+    #[derive(Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
     #[repr(usize)]
     enum State {
         Empty = 0,
@@ -41,69 +41,87 @@ mod shoeshine_shop {
     #[rustfmt::skip]
     #[derive(Debug, Default)]
     struct Stats {
-        state_counts:			[u32; State::Dropping as usize],
-        state_counts_with_drop: [u32; State::Dropping as usize],
+        //state
+        counts:			BTreeMap<State, u32>,
+        drops:			BTreeMap<State, u32>,
 
-        time_in_state:			[f64; State::Dropping as usize],
-        time_in_client:			[f64;  3],
+        //time 
+        t_state:			BTreeMap<State, f64>,
+        //there can be 0, 1 or 2 clients in the system
+        t_client:			[f64;  3],
 
         served_time:            f64,
         served_clients:         u32,
         
-        arrived_clients:        u32,
-        dropped_clients:        u32,
+        arrived:        u32,
     }
 
-    const STATE_TO_CLIENTS: [usize; State::Dropping as usize] = [0, 1, 1, 2, 2];
+    fn client_number(state: State) -> usize {
+        use State::*;
 
-    #[rustfmt::skip]
-    const EVENT_TO_STATE: [[State; 5]; 3] = [
-        //                     EMPTY    FIRST     SECOND   WAITING   BOTH
-        /* Arrived */         [First,   Dropping, Both,    Dropping, Dropping],
-        /* First_Finished */  [Invalid, Second,   Invalid, Invalid,  Waiting],
-        /* Second_Finished */ [Invalid, Invalid,  Empty,   Second,   First],
-    ];
+        match state {
+            Empty => 0,
+            First | Second => 1,
+            _ => 2,
+        }
+    }
 
-    macro_rules! report {
-        ($title:expr, $counts:expr) => {{
-            println!("{}", $title);
-            let events: f64 = $counts.iter().copied().map(Into::<f64>::into).sum();
+    fn advance(state: State, event: Event) -> State {
+        use Event::*;
+        use State::*;
 
-            for (i, count) in $counts.iter().enumerate() {
-                let state: State = i.try_into().unwrap();
-                println!("{:?}: {}", state, Into::<f64>::into(*count) / events);
-            }
+        match event {
+            Arrived => match state {
+                Empty => First,
+                Second => Both,
+                _ => Dropping,
+            },
+            FirstFinished => match state {
+                First => Second,
+                Both => Waiting,
+                _ => Invalid,
+            },
+            SecondFinished => match state {
+                Second => Empty,
+                Waiting => Second,
+                Both => First,
+                _ => Invalid,
+            },
+        }
+    }
 
-            println!();
-        }};
+    fn report<T>(title: &str, counts: &BTreeMap<State, T>)
+    where
+        T: Copy + Into<f64>,
+    {
+        println!("{}", title);
+        let events: f64 = counts.values().copied().map(Into::<f64>::into).sum();
+
+        for (state, count) in counts.iter() {
+            println!("{:?}: {}", state, Into::<f64>::into(*count) / events);
+        }
+
+        println!();
     }
 
     pub struct Simulation<T: Distribution<f64>> {
-        statistics: Stats,
+        stats: Stats,
         window: BinaryHeap<Reverse<Pair>>,
         iterations: u64,
-        distributions: [T; 3],
+        distributions: BTreeMap<Event, T>,
         log_tail: u64,
     }
-
-    use Event::*;
-    use State::*;
 
     impl<T> Simulation<T>
     where
         T: Distribution<f64>,
     {
-        pub fn new(
-            arrival: T,
-            first_serving: T,
-            second_serving: T,
-            iterations: u64,
-        ) -> Simulation<T> {
+        pub fn new(distributions: BTreeMap<Event, T>, iterations: u64) -> Simulation<T> {
             Simulation {
-                statistics: Stats::default(),
+                stats: Stats::default(),
                 window: BinaryHeap::new(),
                 iterations: iterations,
-                distributions: [arrival, first_serving, second_serving],
+                distributions: distributions,
                 log_tail: 0,
             }
         }
@@ -113,35 +131,32 @@ mod shoeshine_shop {
         }
 
         pub fn print_report(&mut self) {
-            for (i, element) in self
-                .statistics
-                .state_counts_with_drop
-                .iter_mut()
-                .enumerate()
-            {
-                *element += self.statistics.state_counts[i];
-            }
+            let dropful_counts: BTreeMap<_, _> = self
+                .stats
+                .drops
+                .iter()
+                .map(|(&state, count)| (state, count + self.stats.counts[&state]))
+                .collect();
 
-            report!("\ntime in states: ", self.statistics.time_in_state);
-            report!("entries in states: ", self.statistics.state_counts);
-            report!(
-                "entries in states with dropouts: ",
-                self.statistics.state_counts_with_drop
-            );
+            report("\ntime in states: ", &self.stats.t_state);
+            report("entries in states: ", &self.stats.counts);
+            report("entries in states with dropouts: ", &dropful_counts);
+
+            let dropped: u32 = self.stats.drops.values().sum();
 
             println!(
-                "dropout: {}\naverage serving time: {}\naverage number of clients: {}",
-                (self.statistics.dropped_clients as f64) / (self.statistics.arrived_clients as f64),
-                self.statistics.served_time / (self.statistics.served_clients as f64),
-                (self.statistics.time_in_client[1] + 2.0f64 * self.statistics.time_in_client[2])
-                    / self.statistics.time_in_client.iter().sum::<f64>()
+                "dropout: {dropout}\naverage serving time: {time}\naverage number of clients: {number}",
+                dropout = (dropped as f64) / (self.stats.arrived as f64),
+                time = self.stats.served_time / (self.stats.served_clients as f64),
+                number = (self.stats.t_client[1] + 2.0f64 * self.stats.t_client[2])
+                    / self.stats.t_client.iter().sum::<f64>()
             );
         }
 
         pub fn simulate(&mut self, prng: &mut StdRng) -> bool {
             macro_rules! pusher {
                 ($t:expr, $event:expr) => {{
-                    let dt: f64 = self.distributions[$event as usize].sample(prng).into();
+                    let dt: f64 = self.distributions[&$event].sample(prng).into();
                     self.window.push(Reverse(Pair {
                         time: ($t + dt).into(),
                         event: $event,
@@ -155,7 +170,7 @@ mod shoeshine_shop {
 
             self.window.push(Reverse(Pair {
                 time: 0.0.into(),
-                event: Arrived,
+                event: Event::Arrived,
             }));
 
             for i in 0..self.iterations {
@@ -166,28 +181,34 @@ mod shoeshine_shop {
                         event.time.0,
                         state,
                         event.event,
-                        EVENT_TO_STATE[event.event as usize][state as usize]
+                        advance(state, event.event)
                     );
                 }
                 match event.event {
                     Arrived => {
-                        self.statistics.arrived_clients += 1;
+                        self.stats.arrived += 1;
                         pusher!(event.time.0, Arrived);
                     }
                     SecondFinished => {
-                        self.statistics.served_time +=
-                            event.time.0 - arriving_times.front().unwrap();
+                        self.stats.served_time += event.time.0 - arriving_times.front().unwrap();
                         arriving_times.pop_front();
-                        self.statistics.served_clients += 1;
+                        self.stats.served_clients += 1;
                     }
                     _ => (),
                 }
-                let new_state = EVENT_TO_STATE[event.event as usize][state as usize];
+
+                use Event::*;
+                use State::*;
+
+                let new_state = advance(state, event.event);
                 match new_state {
                     Invalid => return false,
                     Dropping => {
-                        self.statistics.state_counts_with_drop[state as usize] += 1;
-                        self.statistics.dropped_clients += 1;
+                        self.stats
+                            .drops
+                            .entry(state)
+                            .and_modify(|cnt| *cnt += 1)
+                            .or_default();
                         continue;
                     }
                     First | Both if event.event == Arrived => {
@@ -197,12 +218,22 @@ mod shoeshine_shop {
                     Second => pusher!(event.time.0, SecondFinished),
                     _ => (),
                 }
-                self.statistics.time_in_state[state as usize] += event.time.0 - prev;
-                self.statistics.time_in_client[STATE_TO_CLIENTS[state as usize]] +=
-                    event.time.0 - prev;
+                self.stats
+                    .t_state
+                    .entry(state)
+                    .and_modify(|time| *time += event.time.0 - prev)
+                    .or_default();
+
+                self.stats.t_client[client_number(state)] += event.time.0 - prev;
+
                 prev = event.time.0;
                 state = new_state;
-                self.statistics.state_counts[state as usize] += 1;
+
+                self.stats
+                    .counts
+                    .entry(state)
+                    .and_modify(|cnt| *cnt += 1)
+                    .or_default();
             }
 
             true
@@ -244,14 +275,16 @@ struct Args {
 }
 
 fn main() {
+    use shoeshine_shop::*;
     let args = Args::from_args();
 
-    let mut simulation = shoeshine_shop::Simulation::new(
-        Exp::new(args.lambda).unwrap(),
-        Exp::new(args.mu1).unwrap(),
-        Exp::new(args.mu2).unwrap(),
-        args.iterations * 1_000_000,
-    );
+    let mut dists = BTreeMap::new();
+
+    dists.insert(Event::Arrived, Exp::new(args.lambda).unwrap());
+    dists.insert(Event::FirstFinished, Exp::new(args.mu1).unwrap());
+    dists.insert(Event::SecondFinished, Exp::new(args.mu2).unwrap());
+
+    let mut simulation = Simulation::new(dists, args.iterations * 1_000_000);
 
     let seed = args.seed.unwrap_or(rand::thread_rng().gen());
     simulation.set_tail(args.tail);
