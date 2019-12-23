@@ -1,18 +1,21 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use rand_distr::Exp;
 
-use std::collections::BTreeMap;
 use structopt::StructOpt;
+
+use fnv::FnvHashMap;
 
 mod shoeshine_shop {
     use std::cmp::Reverse;
-    use std::collections::{BTreeMap, BinaryHeap, VecDeque};
+    use std::collections::{BinaryHeap, VecDeque};
 
+    use fnv::FnvHashMap;
     use ordered_float::*;
+
     use rand::rngs::StdRng;
     use rand_distr::Distribution;
 
-    #[derive(Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd)]
+    #[derive(Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
     #[repr(usize)]
     pub enum Event {
         Arrived = 0,
@@ -42,11 +45,11 @@ mod shoeshine_shop {
     #[derive(Debug, Default)]
     struct Stats {
         //state
-        counts:			BTreeMap<State, u32>,
-        drops:			BTreeMap<State, u32>,
+        counts:			FnvHashMap<State, u32>,
+        drops:			FnvHashMap<State, u32>,
 
         //time 
-        t_state:			BTreeMap<State, f64>,
+        t_state:			FnvHashMap<State, f64>,
         //there can be 0, 1 or 2 clients in the system
         t_client:			[f64;  3],
 
@@ -90,15 +93,21 @@ mod shoeshine_shop {
         }
     }
 
-    fn report<T>(title: &str, counts: &BTreeMap<State, T>)
+    fn report<T>(title: &str, counts: &FnvHashMap<State, T>)
     where
         T: Copy + Into<f64>,
     {
         println!("{}", title);
         let events: f64 = counts.values().copied().map(Into::<f64>::into).sum();
+        let mut states: Vec<_> = counts.keys().copied().collect();
+        states.sort();
 
-        for (state, count) in counts.iter() {
-            println!("{:?}: {}", state, Into::<f64>::into(*count) / events);
+        for state in states {
+            println!(
+                "{:?}: {}",
+                state,
+                Into::<f64>::into(counts[&state]) / events
+            );
         }
 
         println!();
@@ -108,7 +117,7 @@ mod shoeshine_shop {
         stats: Stats,
         window: BinaryHeap<Reverse<Pair>>,
         iterations: u64,
-        distributions: BTreeMap<Event, T>,
+        distributions: FnvHashMap<Event, T>,
         log_tail: u64,
     }
 
@@ -116,7 +125,7 @@ mod shoeshine_shop {
     where
         T: Distribution<f64>,
     {
-        pub fn new(distributions: BTreeMap<Event, T>, iterations: u64) -> Simulation<T> {
+        pub fn new(distributions: FnvHashMap<Event, T>, iterations: u64) -> Simulation<T> {
             Simulation {
                 stats: Stats::default(),
                 window: BinaryHeap::new(),
@@ -131,11 +140,11 @@ mod shoeshine_shop {
         }
 
         pub fn print_report(&mut self) {
-            let dropful_counts: BTreeMap<_, _> = self
+            let dropful_counts: FnvHashMap<_, _> = self
                 .stats
-                .drops
+                .counts
                 .iter()
-                .map(|(&state, count)| (state, count + self.stats.counts[&state]))
+                .map(|(&state, count)| (state, count + *self.stats.drops.get(&state).unwrap_or(&0)))
                 .collect();
 
             report("\ntime in states: ", &self.stats.t_state);
@@ -278,7 +287,7 @@ fn main() {
     use shoeshine_shop::*;
     let args = Args::from_args();
 
-    let mut dists = BTreeMap::new();
+    let mut dists = FnvHashMap::default();
 
     dists.insert(Event::Arrived, Exp::new(args.lambda).unwrap());
     dists.insert(Event::FirstFinished, Exp::new(args.mu1).unwrap());
