@@ -1,4 +1,4 @@
-use rand::{rngs::StdRng, Rng, SeedableRng};
+/*use rand::{rngs::StdRng, Rng, SeedableRng};
 use rand_distr::Exp;
 
 use structopt::StructOpt;
@@ -48,14 +48,14 @@ mod shoeshine_shop {
         counts:			FnvHashMap<State, u32>,
         drops:			FnvHashMap<State, u32>,
 
-        //time 
+        //time
         t_state:			FnvHashMap<State, f64>,
         //there can be 0, 1 or 2 clients in the system
         t_client:			[f64;  3],
 
         served_time:            f64,
         served_clients:         u32,
-        
+
         arrived:        u32,
     }
 
@@ -305,4 +305,63 @@ fn main() {
     }
 
     simulation.print_report();
+}
+*/
+
+macro_rules! make_enum{
+    ($name:ident, $($element:ident)+) => {
+        #[derive(Debug)]
+        enum $name{
+            $($element),+
+        }
+    }
+}
+
+macro_rules! advance_both{
+    (
+        ($first:ident $($first_n:ident)+),
+        ($second:ident $($second_n:ident)+)
+    ) => {
+        $first => $second,
+        advance_both!($($first_n)+, $($second_n)+)
+    }
+}
+
+macro_rules! match_from_table {
+    (
+        $state:ident,
+        $event:ident
+        - $($first_row:ident)+,
+        $($first_element:ident: $($element:ident)+),+
+    ) => {
+        make_enum![$state, $($first_row)+];
+        make_enum![$event, $($first_element)+];
+
+        fn advance(state: $state, event: $event) -> $state{
+            match (event){
+                $(
+                    $event::$first_element => match(state){
+                        $state::A => $state::B,
+                       // $(
+                        advance_both!($($element)+, $($element)+)
+                            //$state::$first_row => $state::$element
+                        //),+
+                    }
+                ),+
+            }
+        }
+
+    }
+}
+
+match_from_table![State, Event
+                 -  A B,
+                 C: B B,
+                 D: B B
+                 ];
+
+fn main() {
+    let a = State::A;
+    let b = Event::C;
+    println!("{:?} {:?}", a, b);
 }
