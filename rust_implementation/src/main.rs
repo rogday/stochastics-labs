@@ -192,8 +192,8 @@ mod shoeshine_shop {
             report("Entries in states with dropouts: ", &dropful_counts);
 
             println!(
-                "Dropout: {dropout}\n\
-                 Average serving time: {time}\n\
+                "Dropout:                   {dropout}\n\
+                 Average serving time:      {time}\n\
                  Average number of clients: {number}",
                 dropout = (dropped as f64) / (self.stats.arrived as f64),
                 time = self.stats.served_time / (self.stats.served_clients as f64),
