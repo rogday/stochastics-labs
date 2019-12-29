@@ -6,13 +6,16 @@ use structopt::StructOpt;
 use fnv::FnvHashMap;
 
 mod shoeshine_shop {
-    use std::cmp::Reverse;
-    use std::collections::BinaryHeap;
+    //use std::cmp::Reverse;
+    //use std::collections::BinaryHeap;
 
     use either::*;
     use fnv::FnvHashMap; //standard hasher is DDOS-resistant and therefore slow-ish
+
+    //use heapless::binary_heap::{BinaryHeap, Min};
+    //use heapless::consts::*;
     use itertools::*;
-    use ordered_float::*;
+    use ordered_float::*; // type level integer used to specify capacity
 
     use rand::rngs::StdRng;
     use rand_distr::Distribution;
@@ -36,12 +39,58 @@ mod shoeshine_shop {
         }
     }
 
+    #[derive(Default)]
+    struct TreeMin3<T> {
+        buffer: [T; 3],
+        len: usize,
+    }
+
+    impl<T: PartialOrd + Copy + Default + std::fmt::Debug> TreeMin3<T> {
+        fn new() -> Self {
+            TreeMin3 {
+                buffer: [T::default(); 3],
+                len: 0,
+            }
+        }
+
+        fn push(&mut self, val: T) {
+            let mut i = 0;
+            while i < self.len && val > self.buffer[i] {
+                i += 1;
+            }
+
+            let mut k = self.len;
+            while k > i {
+                self.buffer.swap(k, k - 1);
+                k -= 1;
+            }
+
+            self.buffer[i] = val;
+            self.len += 1;
+        }
+
+        fn pop(&mut self) -> T {
+            for k in 0..self.len - 1 {
+                self.buffer.swap(k, k + 1);
+            }
+
+            self.len -= 1;
+            self.buffer[self.len]
+        }
+    }
+
     #[derive(Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
     #[repr(usize)]
     pub enum Event {
         Arrived,
         FirstFinished,
         SecondFinished,
+    }
+
+    impl Default for Event {
+        fn default() -> Self {
+            Event::SecondFinished
+        }
     }
 
     #[derive(Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
@@ -58,7 +107,7 @@ mod shoeshine_shop {
         Dropping,
     }
 
-    #[derive(Copy, Clone, Debug, Ord, Eq, PartialEq, PartialOrd)]
+    #[derive(Default, Copy, Clone, Debug, Ord, Eq, PartialEq, PartialOrd)]
     struct Pair {
         time: OrderedFloat<f64>,
         event: Event,
@@ -146,7 +195,7 @@ mod shoeshine_shop {
 
     pub struct Simulation<T: Distribution<f64>> {
         stats: Stats,
-        window: BinaryHeap<Reverse<Pair>>,
+        window: TreeMin3<Pair>,
         iterations: u64,
         distributions: FnvHashMap<Event, T>,
         log_tail: u64,
@@ -157,11 +206,12 @@ mod shoeshine_shop {
         T: Distribution<f64>,
     {
         pub fn new(distributions: FnvHashMap<Event, T>, iterations: u64) -> Simulation<T> {
+            assert!(distributions.len() == 3);
             Simulation {
                 stats: Stats::default(),
-                window: BinaryHeap::new(),
-                iterations: iterations,
-                distributions: distributions,
+                window: TreeMin3::new(),
+                iterations,
+                distributions,
                 log_tail: 0,
             }
         }
@@ -206,10 +256,15 @@ mod shoeshine_shop {
             macro_rules! pusher {
                 ($t:expr, $event:expr) => {{
                     let dt: f64 = self.distributions[&$event].sample(prng).into();
-                    self.window.push(Reverse(Pair {
-                        time: ($t + dt).into(),
+                    self.window.push(Pair {
+                        time: (
+                            $t + //a
+                                            dt
+                            //b
+                        ) //
+                            .into(),
                         event: $event,
-                    }));
+                    });
                 }};
             }
 
@@ -219,23 +274,22 @@ mod shoeshine_shop {
             // basically two floats on stack
             let mut arriving_times = Queue::<f64>::default();
 
-            self.window.push(Reverse(Pair {
+            self.window.push(Pair {
                 time: 0.0.into(),
                 event: Event::Arrived,
-            }));
+            });
 
             // get current event, resubscribe it if needed, determine new state,
             // generate new events if we got a state and not a transition
             // collect statistics everywhere
             for i in 0..self.iterations {
-                let current = self.window.pop().unwrap().0;
+                let current = self.window.pop();
+                let new_state = advance(state, current.event)?;
+
                 if self.iterations - i < self.log_tail {
                     println!(
                         "{}: [{:?}] {:?} ==> [{:?}]",
-                        current.time.0,
-                        state,
-                        current.event,
-                        advance(state, current.event)?
+                        current.time.0, state, current.event, new_state
                     );
                 }
                 match current.event {
@@ -250,7 +304,6 @@ mod shoeshine_shop {
                     _ => (),
                 }
 
-                let new_state = advance(state, current.event)?;
                 match new_state {
                     Right(Transition::Dropping) => {
                         self.stats
