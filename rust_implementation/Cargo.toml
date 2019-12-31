@@ -10,8 +10,9 @@ edition = "2018"
 rand = "0.7"
 rand_distr = "0.2"
 ordered-float = "1.0"
-fnv = "1.0.6"
-either = "1.5.3"
-heapless = "0.5.1"
+
 itertools = "0.8.2"
-structopt = "0.3"
+structopt = "0.3"       #args
+
+fnv = "1.0.6"           #fast hasher
+either = "1.5.3"

@@ -140,7 +140,7 @@ mod shoeshine_shop {
         match state {
             State::Empty => 0,
             State::First | State::Second => 1,
-            _ => 2,
+            State::Waiting | State::Both => 2,
         }
     }
 
@@ -256,13 +256,9 @@ mod shoeshine_shop {
             macro_rules! pusher {
                 ($t:expr, $event:expr) => {{
                     let dt: f64 = self.distributions[&$event].sample(prng).into();
+
                     self.window.push(Pair {
-                        time: (
-                            $t + //a
-                                            dt
-                            //b
-                        ) //
-                            .into(),
+                        time: ($t + dt).into(),
                         event: $event,
                     });
                 }};
@@ -286,10 +282,10 @@ mod shoeshine_shop {
                 let current = self.window.pop();
                 let new_state = advance(state, current.event)?;
 
-                if self.iterations - i < self.log_tail {
+                if self.iterations - i < self.log_tail + 1 {
                     println!(
-                        "{}: [{:?}] {:?} ==> [{:?}]",
-                        current.time.0, state, current.event, new_state
+                        "{:.10}: [{:?}] {:?} ==> [{:?}]",
+                        i, state, current.event, new_state
                     );
                 }
                 match current.event {
@@ -306,11 +302,7 @@ mod shoeshine_shop {
 
                 match new_state {
                     Right(Transition::Dropping) => {
-                        self.stats
-                            .drops
-                            .entry(state)
-                            .and_modify(|cnt| *cnt += 1)
-                            .or_default();
+                        *self.stats.drops.entry(state).or_default() += 1;
                         continue;
                     }
                     Left(_) if current.event == Event::Arrived => {
@@ -320,20 +312,12 @@ mod shoeshine_shop {
                     Left(State::Second) => pusher!(current.time.0, Event::SecondFinished),
                     _ => (),
                 }
-                self.stats
-                    .t_state
-                    .entry(state)
-                    .and_modify(|time| *time += current.time.0 - prev)
-                    .or_default();
+                *self.stats.t_state.entry(state).or_default() += current.time.0 - prev;
 
                 prev = current.time.0;
                 state = new_state.left().unwrap();
 
-                self.stats
-                    .counts
-                    .entry(state)
-                    .and_modify(|cnt| *cnt += 1)
-                    .or_default();
+                *self.stats.counts.entry(state).or_default() += 1;
             }
 
             Ok(())
