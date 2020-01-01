@@ -1,17 +1,18 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use rand_distr::Exp;
 
+use enum_map::enum_map;
 use structopt::StructOpt;
 
-use fnv::FnvHashMap;
-
 mod shoeshine_shop {
+    use enum_map::{Enum, EnumMap};
+
     //use std::cmp::Reverse;
     //use std::collections::BinaryHeap;
 
     use either::*;
-    use fnv::FnvHashMap; //standard hasher is DDOS-resistant and therefore slow-ish
 
+    // heapless is too slow for some reason
     //use heapless::binary_heap::{BinaryHeap, Min};
     //use heapless::consts::*;
     use itertools::*;
@@ -79,7 +80,7 @@ mod shoeshine_shop {
         }
     }
 
-    #[derive(Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
+    #[derive(Enum, Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
     #[repr(usize)]
     pub enum Event {
         Arrived,
@@ -93,9 +94,9 @@ mod shoeshine_shop {
         }
     }
 
-    #[derive(Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
+    #[derive(Enum, Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
     #[repr(usize)]
-    enum State {
+    pub enum State {
         Empty,
         First,
         Second,
@@ -117,13 +118,13 @@ mod shoeshine_shop {
     #[derive(Debug, Default)]
     struct Stats {
         /// How many times system was in state S
-        counts:	        FnvHashMap<State, u32>,
+        counts:	        EnumMap<State, u32>,
 
         /// How many times system dropped client in state S
-        drops:	        FnvHashMap<State, u32>,
+        drops:	        EnumMap<State, u32>,
 
         /// Time spent in state S
-        t_state:        FnvHashMap<State, f64>,
+        t_state:        EnumMap<State, f64>,
 
         /// How long system was in serving state (From First to SecondFinished)
         served_time:    f64,
@@ -135,7 +136,18 @@ mod shoeshine_shop {
         arrived:        u32,
     }
 
+    pub struct Report {
+        pub t_states: EnumMap<State, f64>,
+        pub counts: EnumMap<State, f64>,
+        pub dropful_counts: EnumMap<State, f64>,
+
+        pub dropout: f64,
+        pub t_serving_avg: f64,
+        pub n_clients_avg: f64,
+    }
+
     /// Map state to number of clients in that state
+    // Not a hasher because otherwise Eq must be reimplemented as well
     fn client_number(state: State) -> usize {
         match state {
             State::Empty => 0,
@@ -173,21 +185,27 @@ mod shoeshine_shop {
         }
     }
 
-    /// Print normalized table-like report for all states
-    fn report<T>(title: &str, counts: &FnvHashMap<State, T>)
+    fn report<T>(counts: &EnumMap<State, T>) -> EnumMap<State, f64>
     where
         T: Copy + Into<f64>,
     {
-        println!("{}", title);
-        let events: f64 = counts.values().copied().map_into::<f64>().sum();
-        let states: Vec<_> = counts.keys().copied().sorted().collect();
+        let mut res = EnumMap::new();
+        let sum: f64 = counts.values().copied().map_into::<f64>().sum();
 
-        for state in states {
-            println!(
-                "{:?}:   \t{}",
-                state,
-                Into::<f64>::into(counts[&state]) / events
-            );
+        for (state, count) in counts.iter() {
+            let normalized: f64 = (*count).into() / sum;
+            res[state] = normalized;
+        }
+
+        res
+    }
+
+    /// Print normalized table-like report for all states
+    fn print_report(title: &str, counts: &EnumMap<State, f64>) {
+        println!("{}", title);
+
+        for (state, value) in counts.iter() {
+            println!("{:?}:   \t{}", state, value);
         }
 
         println!();
@@ -196,8 +214,9 @@ mod shoeshine_shop {
     pub struct Simulation<T: Distribution<f64>> {
         stats: Stats,
         window: TreeMin3<Pair>,
+        // window: BinaryHeap<Pair, U3, Min>,
         iterations: u64,
-        distributions: FnvHashMap<Event, T>,
+        distributions: EnumMap<Event, T>,
         log_tail: u64,
     }
 
@@ -205,11 +224,12 @@ mod shoeshine_shop {
     where
         T: Distribution<f64>,
     {
-        pub fn new(distributions: FnvHashMap<Event, T>, iterations: u64) -> Simulation<T> {
+        pub fn new(distributions: EnumMap<Event, T>, iterations: u64) -> Simulation<T> {
             assert!(distributions.len() == 3);
             Simulation {
                 stats: Stats::default(),
                 window: TreeMin3::new(),
+                // window: BinaryHeap::new(),
                 iterations,
                 distributions,
                 log_tail: 0,
@@ -220,34 +240,45 @@ mod shoeshine_shop {
             self.log_tail = new_tail;
         }
 
-        /// Report of collected stats
-        pub fn print_report(&self) {
-            let dropful_counts: FnvHashMap<_, _> = self
-                .stats
-                .counts
-                .iter()
-                .map(|(&state, count)| (state, count + *self.stats.drops.get(&state).unwrap_or(&0)))
-                .collect();
+        pub fn full_report(&self) -> Report {
+            let mut dropful_counts = EnumMap::<State, u32>::new();
+
+            for (state, count) in self.stats.counts.iter() {
+                dropful_counts[state] = count + self.stats.drops[state];
+            }
 
             // How long there was {0, 1, 2} clients in the system
             let mut t_client = [0f64; 3];
-            for (&i, time) in self.stats.t_state.iter() {
-                t_client[client_number(i)] += time
+            for (state, time) in self.stats.t_state.iter() {
+                t_client[client_number(state)] += time
             }
 
             let dropped: u32 = self.stats.drops.values().sum();
 
-            report("\nTime in states: ", &self.stats.t_state);
-            report("Entries in states: ", &self.stats.counts);
-            report("Entries in states with dropouts: ", &dropful_counts);
+            Report {
+                t_states: report(&self.stats.t_state),
+                counts: report(&self.stats.counts),
+                dropful_counts: report(&dropful_counts),
+
+                dropout: (dropped as f64) / (self.stats.arrived as f64),
+                t_serving_avg: self.stats.served_time / (self.stats.served_clients as f64),
+                n_clients_avg: (t_client[1] + 2.0f64 * t_client[2]) / t_client.iter().sum::<f64>(),
+            }
+        }
+
+        /// Report of collected stats
+        pub fn print_full_report(&self) {
+            let report = self.full_report();
+
+            print_report("\nTime in states: ", &report.t_states);
+            print_report("Entries in states: ", &report.counts);
+            print_report("Entries in states with dropouts: ", &report.dropful_counts);
 
             println!(
-                "Dropout:                   {dropout}\n\
-                 Average serving time:      {time}\n\
-                 Average number of clients: {number}",
-                dropout = (dropped as f64) / (self.stats.arrived as f64),
-                time = self.stats.served_time / (self.stats.served_clients as f64),
-                number = (t_client[1] + 2.0f64 * t_client[2]) / t_client.iter().sum::<f64>()
+                "Dropout:                   {}\n\
+                 Average serving time:      {}\n\
+                 Average number of clients: {}",
+                report.dropout, report.t_serving_avg, report.n_clients_avg
             );
         }
 
@@ -255,7 +286,7 @@ mod shoeshine_shop {
             // generate dt and insert (from_time + dt, event) in a window
             macro_rules! pusher {
                 ($t:expr, $event:expr) => {{
-                    let dt: f64 = self.distributions[&$event].sample(prng).into();
+                    let dt: f64 = self.distributions[$event].sample(prng).into();
 
                     self.window.push(Pair {
                         time: ($t + dt).into(),
@@ -302,7 +333,7 @@ mod shoeshine_shop {
 
                 match new_state {
                     Right(Transition::Dropping) => {
-                        *self.stats.drops.entry(state).or_default() += 1;
+                        self.stats.drops[state] += 1;
                         continue;
                     }
                     Left(_) if current.event == Event::Arrived => {
@@ -312,16 +343,89 @@ mod shoeshine_shop {
                     Left(State::Second) => pusher!(current.time.0, Event::SecondFinished),
                     _ => (),
                 }
-                *self.stats.t_state.entry(state).or_default() += current.time.0 - prev;
+                self.stats.t_state[state] += current.time.0 - prev;
 
                 prev = current.time.0;
                 state = new_state.left().unwrap();
 
-                *self.stats.counts.entry(state).or_default() += 1;
+                self.stats.counts[state] += 1;
             }
 
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shoeshine_shop::*;
+
+    use enum_map::{enum_map, EnumMap};
+    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand_distr::Exp;
+
+    const EPS: f64 = 0.01;
+    const ITERATIONS: u64 = 50_000_000;
+
+    fn run(lambda: f64, mu1: f64, mu2: f64) -> Report {
+        let distributions = enum_map! {
+            Event::Arrived        => Exp::new(lambda).unwrap(),
+            Event::FirstFinished  => Exp::new(mu1).unwrap(),
+            Event::SecondFinished => Exp::new(mu2).unwrap(),
+        };
+
+        let mut simulation = Simulation::new(distributions, ITERATIONS);
+
+        // NOTE: that's not lazy
+        let seed = rand::thread_rng().gen();
+
+        let mut prng: StdRng = SeedableRng::seed_from_u64(seed);
+
+        if let Err(error) = simulation.simulate(&mut prng) {
+            panic!("Error: {}, seed: {}", error, seed);
+        }
+
+        simulation.full_report()
+    }
+
+    fn check(map: &EnumMap<State, f64>, v: &[f64]) {
+        for (i, value) in map.values().enumerate() {
+            assert!(value - v[i] < EPS, format!("Error in state {}", i));
+        }
+    }
+
+    #[test]
+    fn case_one() {
+        let report = run(3.0, 20.0, 1.0);
+
+        let t_states = vec![0.758597, 0.0130194, 0.227571, 0.650963, 0.0325863];
+        let counts = vec![0.0833838, 0.0952409, 0.333333, 0.238093, 0.249949];
+        let dropful_counts = vec![0.0472291, 0.0620404, 0.188802, 0.540162, 0.161766];
+
+        check(&report.t_states, &t_states);
+        check(&report.counts, &counts);
+        check(&report.dropful_counts, &dropful_counts);
+
+        assert!(report.dropout - 0.696653 < EPS);
+        assert!(report.t_serving_avg - 1.76369 < EPS);
+        assert!(report.n_clients_avg - 1.60759 < EPS);
+    }
+
+    #[test]
+    fn case_two() {
+        let report = run(1.0, 1.0, 1.0);
+
+        let t_states = vec![0.223083, 0.333209, 0.222046, 0.11069, 0.110972];
+        let counts = vec![0.166769, 0.24998, 0.333334, 0.0833531, 0.166564];
+        let dropful_counts = vec![0.11776, 0.352968, 0.235376, 0.117753, 0.176142];
+
+        check(&report.t_states, &t_states);
+        check(&report.counts, &counts);
+        check(&report.dropful_counts, &dropful_counts);
+
+        assert!(report.dropout - 0.555263 < EPS);
+        assert!(report.t_serving_avg - 2.24861 < EPS);
+        assert!(report.n_clients_avg - 0.998578 < EPS);
     }
 }
 
@@ -362,14 +466,15 @@ fn main() {
     use shoeshine_shop::*;
     let args = Args::from_args();
 
-    let mut distributions = FnvHashMap::default();
-
-    distributions.insert(Event::Arrived, Exp::new(args.lambda).unwrap());
-    distributions.insert(Event::FirstFinished, Exp::new(args.mu1).unwrap());
-    distributions.insert(Event::SecondFinished, Exp::new(args.mu2).unwrap());
+    let distributions = enum_map! {
+        Event::Arrived        => Exp::new(args.lambda).unwrap(),
+        Event::FirstFinished  => Exp::new(args.mu1).unwrap(),
+        Event::SecondFinished => Exp::new(args.mu2).unwrap(),
+    };
 
     let mut simulation = Simulation::new(distributions, args.iterations * 1_000_000);
 
+    // NOTE: that's not lazy
     let seed = args.seed.unwrap_or(rand::thread_rng().gen());
     simulation.set_tail(args.tail);
 
@@ -379,5 +484,5 @@ fn main() {
         panic!("Error: {}, seed: {}", error, seed);
     }
 
-    simulation.print_report();
+    simulation.print_full_report();
 }

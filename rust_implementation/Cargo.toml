@@ -14,5 +14,7 @@ ordered-float = "1.0"
 itertools = "0.8.2"
 structopt = "0.3"       #args
 
-fnv = "1.0.6"           #fast hasher
+# too slow
+# heapless = "0.5.1"
+enum-map = "0.6.2"
 either = "1.5.3"
