@@ -21,6 +21,7 @@ mod shoeshine_shop {
     use rand::rngs::StdRng;
     use rand_distr::Distribution;
 
+    // TODO: get rid of this
     /// Wrapper around an array of two elements
     #[derive(Default)]
     struct Queue<T: Copy> {
@@ -40,6 +41,7 @@ mod shoeshine_shop {
         }
     }
 
+    // TODO: get rid of this
     #[derive(Default)]
     struct TreeMin3<T> {
         buffer: [T; 3],
@@ -117,16 +119,16 @@ mod shoeshine_shop {
     #[rustfmt::skip]
     #[derive(Debug, Default)]
     struct Stats {
-        /// How many times system was in state S
+        /// How many times the system was in the state S
         counts:	        EnumMap<State, u32>,
 
-        /// How many times system dropped client in state S
+        /// How many times the system dropped client in the state S
         drops:	        EnumMap<State, u32>,
 
-        /// Time spent in state S
+        /// Time spent in the state S
         t_state:        EnumMap<State, f64>,
 
-        /// How long system was in serving state (From First to SecondFinished)
+        /// How long the system was in serving state (From First to SecondFinished)
         served_time:    f64,
 
         /// How many clients were served
@@ -136,14 +138,58 @@ mod shoeshine_shop {
         arrived:        u32,
     }
 
+    /// Basically normalized Stats
     pub struct Report {
+        /// Time spent in the state S, *Normalized*
         pub t_states: EnumMap<State, f64>,
+
+        /// How many times the system was in the state S, *Normalized*
         pub counts: EnumMap<State, f64>,
+
+        /// How many times the system dropped client in the state S, *Normalized*
         pub dropful_counts: EnumMap<State, f64>,
 
+        /// Ratio of clients that walked in during busy state to all arrived clients
         pub dropout: f64,
+
+        /// Average serving time (from Arrived to SecondFinished)
         pub t_serving_avg: f64,
+
+        /// Average number of clients in the system
         pub n_clients_avg: f64,
+    }
+
+    impl Report {
+        /// Print normalized table-like report for all states
+        fn print_report(
+            f: &mut std::fmt::Formatter<'_>,
+            title: &str,
+            counts: &EnumMap<State, f64>,
+        ) -> std::fmt::Result {
+            writeln!(f, "{}", title)?;
+
+            for (state, value) in counts.iter() {
+                writeln!(f, "{:?}:   \t{}", state, value)?;
+            }
+
+            writeln!(f)
+        }
+    }
+
+    impl std::fmt::Display for Report {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            Report::print_report(f, "\nTime in states: ", &self.t_states)?;
+            Report::print_report(f, "Entries in states: ", &self.counts)?;
+            Report::print_report(f, "Entries in states with dropouts: ", &self.dropful_counts)?;
+
+            writeln!(
+                f,
+                "Dropout:                   {}\n\
+                 Average serving time:      {}\n\
+                 Average number of clients: {}",
+                self.dropout, self.t_serving_avg, self.n_clients_avg
+            )
+        }
     }
 
     /// Map state to number of clients in that state
@@ -185,30 +231,20 @@ mod shoeshine_shop {
         }
     }
 
-    fn report<T>(counts: &EnumMap<State, T>) -> EnumMap<State, f64>
+    /// Divide each record by sum of all records
+    fn normalized<T>(counts: &EnumMap<State, T>) -> EnumMap<State, f64>
     where
         T: Copy + Into<f64>,
     {
         let mut res = EnumMap::new();
         let sum: f64 = counts.values().copied().map_into::<f64>().sum();
 
-        for (state, count) in counts.iter() {
-            let normalized: f64 = (*count).into() / sum;
+        for (state, &count) in counts.iter() {
+            let normalized: f64 = count.into() / sum;
             res[state] = normalized;
         }
 
         res
-    }
-
-    /// Print normalized table-like report for all states
-    fn print_report(title: &str, counts: &EnumMap<State, f64>) {
-        println!("{}", title);
-
-        for (state, value) in counts.iter() {
-            println!("{:?}:   \t{}", state, value);
-        }
-
-        println!();
     }
 
     pub struct Simulation<T: Distribution<f64>> {
@@ -225,7 +261,7 @@ mod shoeshine_shop {
         T: Distribution<f64>,
     {
         pub fn new(distributions: EnumMap<Event, T>, iterations: u64) -> Simulation<T> {
-            assert!(distributions.len() == 3);
+            // no assertions on distributions needed because EnumMap elements are stored in array and therefore always initialized
             Simulation {
                 stats: Stats::default(),
                 window: TreeMin3::new(),
@@ -240,7 +276,8 @@ mod shoeshine_shop {
             self.log_tail = new_tail;
         }
 
-        pub fn full_report(&self) -> Report {
+        /// Transform collected data into useful statistics
+        fn form_report(&self) -> Report {
             let mut dropful_counts = EnumMap::<State, u32>::new();
 
             for (state, count) in self.stats.counts.iter() {
@@ -256,9 +293,9 @@ mod shoeshine_shop {
             let dropped: u32 = self.stats.drops.values().sum();
 
             Report {
-                t_states: report(&self.stats.t_state),
-                counts: report(&self.stats.counts),
-                dropful_counts: report(&dropful_counts),
+                t_states: normalized(&self.stats.t_state),
+                counts: normalized(&self.stats.counts),
+                dropful_counts: normalized(&dropful_counts),
 
                 dropout: (dropped as f64) / (self.stats.arrived as f64),
                 t_serving_avg: self.stats.served_time / (self.stats.served_clients as f64),
@@ -266,23 +303,7 @@ mod shoeshine_shop {
             }
         }
 
-        /// Report of collected stats
-        pub fn print_full_report(&self) {
-            let report = self.full_report();
-
-            print_report("\nTime in states: ", &report.t_states);
-            print_report("Entries in states: ", &report.counts);
-            print_report("Entries in states with dropouts: ", &report.dropful_counts);
-
-            println!(
-                "Dropout:                   {}\n\
-                 Average serving time:      {}\n\
-                 Average number of clients: {}",
-                report.dropout, report.t_serving_avg, report.n_clients_avg
-            );
-        }
-
-        pub fn simulate(&mut self, prng: &mut StdRng) -> Result<(), &str> {
+        pub fn simulate(&mut self, prng: &mut StdRng) -> Result<Report, &str> {
             // generate dt and insert (from_time + dt, event) in a window
             macro_rules! pusher {
                 ($t:expr, $event:expr) => {{
@@ -319,6 +340,7 @@ mod shoeshine_shop {
                         i, state, current.event, new_state
                     );
                 }
+
                 match current.event {
                     Event::Arrived => {
                         self.stats.arrived += 1;
@@ -351,7 +373,7 @@ mod shoeshine_shop {
                 self.stats.counts[state] += 1;
             }
 
-            Ok(())
+            Ok(self.form_report())
         }
     }
 }
@@ -365,7 +387,8 @@ mod tests {
     use rand_distr::Exp;
 
     const EPS: f64 = 0.01;
-    const ITERATIONS: u64 = 50_000_000;
+    const RELEASE_ITERATIONS: u64 = 50_000_000;
+    const DEBUG_ITERATIONS: u64 = 1_000_000;
 
     fn run(lambda: f64, mu1: f64, mu2: f64) -> Report {
         let distributions = enum_map! {
@@ -374,18 +397,24 @@ mod tests {
             Event::SecondFinished => Exp::new(mu2).unwrap(),
         };
 
-        let mut simulation = Simulation::new(distributions, ITERATIONS);
+        let mut simulation = Simulation::new(
+            distributions,
+            if cfg!(debug_assertions) {
+                DEBUG_ITERATIONS
+            } else {
+                RELEASE_ITERATIONS
+            },
+        );
 
         // NOTE: that's not lazy
         let seed = rand::thread_rng().gen();
 
         let mut prng: StdRng = SeedableRng::seed_from_u64(seed);
 
-        if let Err(error) = simulation.simulate(&mut prng) {
-            panic!("Error: {}, seed: {}", error, seed);
+        match simulation.simulate(&mut prng) {
+            Ok(report) => report,
+            Err(error) => panic!("Error: {}, seed: {}", error, seed),
         }
-
-        simulation.full_report()
     }
 
     fn check(map: &EnumMap<State, f64>, v: &[f64]) {
@@ -480,9 +509,8 @@ fn main() {
 
     let mut prng: StdRng = SeedableRng::seed_from_u64(seed);
 
-    if let Err(error) = simulation.simulate(&mut prng) {
-        panic!("Error: {}, seed: {}", error, seed);
+    match simulation.simulate(&mut prng) {
+        Ok(report) => println!("{}", report),
+        Err(error) => panic!("Error: {}, seed: {}", error, seed),
     }
-
-    simulation.print_full_report();
 }
