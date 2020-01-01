@@ -110,6 +110,11 @@ mod shoeshine_shop {
         Dropping,
     }
 
+    #[derive(Debug)]
+    pub enum SimulationError {
+        InvalidState,
+    }
+
     #[derive(Default, Copy, Clone, Debug, Ord, Eq, PartialEq, PartialOrd)]
     struct Pair {
         time: OrderedFloat<f64>,
@@ -203,7 +208,7 @@ mod shoeshine_shop {
     }
 
     /// Determine new state or pseudostate(Transition) from current state and incoming event
-    fn advance(state: State, event: Event) -> Result<Either<State, Transition>, &'static str> {
+    fn advance(state: State, event: Event) -> Result<Either<State, Transition>, SimulationError> {
         use State::*;
         use Transition::*;
 
@@ -219,14 +224,14 @@ mod shoeshine_shop {
                 First => Ok(Left(Second)),
                 Both => Ok(Left(Waiting)),
                 // first chair is empty/already finished
-                Empty | Second | Waiting => Err("Invalid state reached"),
+                Empty | Second | Waiting => Err(SimulationError::InvalidState),
             },
             Event::SecondFinished => match state {
                 Second => Ok(Left(Empty)),
                 Waiting => Ok(Left(Second)),
                 Both => Ok(Left(First)),
                 // second chair is empty
-                Empty | First => Err("Invalid state reached"),
+                Empty | First => Err(SimulationError::InvalidState),
             },
         }
     }
@@ -303,7 +308,7 @@ mod shoeshine_shop {
             }
         }
 
-        pub fn simulate(&mut self, prng: &mut StdRng) -> Result<Report, &str> {
+        pub fn simulate(&mut self, prng: &mut StdRng) -> Result<Report, SimulationError> {
             // generate dt and insert (from_time + dt, event) in a window
             macro_rules! pusher {
                 ($t:expr, $event:expr) => {{
@@ -413,7 +418,7 @@ mod tests {
 
         match simulation.simulate(&mut prng) {
             Ok(report) => report,
-            Err(error) => panic!("Error: {}, seed: {}", error, seed),
+            Err(error) => panic!("Error: {:?}, seed: {}", error, seed),
         }
     }
 
@@ -511,6 +516,6 @@ fn main() {
 
     match simulation.simulate(&mut prng) {
         Ok(report) => println!("{}", report),
-        Err(error) => panic!("Error: {}, seed: {}", error, seed),
+        Err(error) => panic!("Error: {:?}, seed: {}", error, seed),
     }
 }
