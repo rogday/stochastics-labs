@@ -502,8 +502,7 @@ fn main() {
 
     let mut simulation = Simulation::new(distributions, args.iterations * 1_000_000);
 
-    // NOTE: that's not lazy
-    let seed = args.seed.unwrap_or(rand::thread_rng().gen());
+    let seed = args.seed.unwrap_or_else(|| rand::thread_rng().gen());
     simulation.set_tail(args.tail);
 
     let mut prng: SmallRng = SeedableRng::seed_from_u64(seed);
