@@ -387,15 +387,13 @@ mod tests {
     use rand::{rngs::SmallRng, Rng, SeedableRng};
     use rand_distr::Exp;
 
+    const EPS: f64 = 0.01;
+
     // release
-    #[cfg(not(debug_assertions))]
-    const EPS: f64 = 0.001;
     #[cfg(not(debug_assertions))]
     const ITERATIONS: u64 = 50_000_000;
 
     // debug
-    #[cfg(debug_assertions)]
-    const EPS: f64 = 0.01;
     #[cfg(debug_assertions)]
     const ITERATIONS: u64 = 1_000_000;
 
