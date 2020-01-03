@@ -1,4 +1,5 @@
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{rngs::SmallRng, Rng, SeedableRng};
+
 use rand_distr::Exp;
 
 use enum_map::enum_map;
@@ -12,13 +13,10 @@ mod shoeshine_shop {
 
     use either::*;
 
-    // heapless is too slow for some reason
-    //use heapless::binary_heap::{BinaryHeap, Min};
-    //use heapless::consts::*;
     use itertools::*;
     use ordered_float::*; // type level integer used to specify capacity
 
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand_distr::Distribution;
 
     // TODO: get rid of this
@@ -308,7 +306,7 @@ mod shoeshine_shop {
             }
         }
 
-        pub fn simulate(&mut self, prng: &mut StdRng) -> Result<Report, SimulationError> {
+        pub fn simulate(&mut self, prng: &mut SmallRng) -> Result<Report, SimulationError> {
             // generate dt and insert (from_time + dt, event) in a window
             macro_rules! pusher {
                 ($t:expr, $event:expr) => {{
@@ -388,12 +386,17 @@ mod tests {
     use super::shoeshine_shop::*;
 
     use enum_map::{enum_map, EnumMap};
-    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand::{rngs::SmallRng, Rng, SeedableRng};
     use rand_distr::Exp;
 
     const EPS: f64 = 0.01;
-    const RELEASE_ITERATIONS: u64 = 50_000_000;
-    const DEBUG_ITERATIONS: u64 = 1_000_000;
+
+    // release
+    #[cfg(not(debug_assertions))]
+    const ITERATIONS: u64 = 50_000_000;
+    // debug
+    #[cfg(debug_assertions)]
+    const ITERATIONS: u64 = 1_000_000;
 
     fn run(lambda: f64, mu1: f64, mu2: f64) -> Report {
         let distributions = enum_map! {
@@ -402,24 +405,17 @@ mod tests {
             Event::SecondFinished => Exp::new(mu2).unwrap(),
         };
 
-        let mut simulation = Simulation::new(
-            distributions,
-            if cfg!(debug_assertions) {
-                DEBUG_ITERATIONS
-            } else {
-                RELEASE_ITERATIONS
-            },
-        );
+        let mut simulation = Simulation::new(distributions, ITERATIONS);
 
-        // NOTE: that's not lazy
         let seed = rand::thread_rng().gen();
+        let mut prng: SmallRng = SeedableRng::seed_from_u64(seed);
 
-        let mut prng: StdRng = SeedableRng::seed_from_u64(seed);
+        // if the test fails, it will be printed out
+        println!("Using seed: {}", seed);
 
-        match simulation.simulate(&mut prng) {
-            Ok(report) => report,
-            Err(error) => panic!("Error: {:?}, seed: {}", error, seed),
-        }
+        simulation
+            .simulate(&mut prng)
+            .unwrap_or_else(|e| panic!("Error: {:?}.", e))
     }
 
     fn check(map: &EnumMap<State, f64>, v: &[f64]) {
@@ -512,7 +508,7 @@ fn main() {
     let seed = args.seed.unwrap_or(rand::thread_rng().gen());
     simulation.set_tail(args.tail);
 
-    let mut prng: StdRng = SeedableRng::seed_from_u64(seed);
+    let mut prng: SmallRng = SeedableRng::seed_from_u64(seed);
 
     match simulation.simulate(&mut prng) {
         Ok(report) => println!("{}", report),
