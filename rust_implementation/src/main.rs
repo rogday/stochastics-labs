@@ -8,13 +8,10 @@ use structopt::StructOpt;
 mod shoeshine_shop {
     use enum_map::{Enum, EnumMap};
 
-    //use std::cmp::Reverse;
-    //use std::collections::BinaryHeap;
-
     use either::*;
 
     use itertools::*;
-    use ordered_float::*; // type level integer used to specify capacity
+    use ordered_float::*;
 
     use rand::rngs::SmallRng;
     use rand_distr::Distribution;
@@ -40,6 +37,7 @@ mod shoeshine_shop {
     }
 
     // TODO: get rid of this
+    /// Sorted array on stack with capacity 3
     #[derive(Default)]
     struct TreeMin3<T> {
         buffer: [T; 3],
