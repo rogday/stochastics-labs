@@ -387,12 +387,15 @@ mod tests {
     use rand::{rngs::SmallRng, Rng, SeedableRng};
     use rand_distr::Exp;
 
-    const EPS: f64 = 0.01;
-
     // release
     #[cfg(not(debug_assertions))]
+    const EPS: f64 = 0.001;
+    #[cfg(not(debug_assertions))]
     const ITERATIONS: u64 = 50_000_000;
+
     // debug
+    #[cfg(debug_assertions)]
+    const EPS: f64 = 0.01;
     #[cfg(debug_assertions)]
     const ITERATIONS: u64 = 1_000_000;
 
@@ -411,49 +414,119 @@ mod tests {
         // if the test fails, it will be printed out
         println!("Using seed: {}", seed);
 
-        simulation
-            .simulate(&mut prng)
-            .unwrap_or_else(|e| panic!("Error: {:?}.", e))
+        simulation.simulate(&mut prng).expect("Simulation failed")
     }
 
-    fn check(map: &EnumMap<State, f64>, v: &[f64]) {
-        for (i, value) in map.values().enumerate() {
-            assert!(value - v[i] < EPS, format!("Error in state {}", i));
+    fn approx_eq_assert(a: f64, b: f64, msg: &str) {
+        assert!(
+            (a - b).abs() < EPS,
+            format!("{}: expected {}, got {}", msg, b, a)
+        );
+    }
+
+    fn assert_maps(title: &str, map: &EnumMap<State, f64>, v: &EnumMap<State, f64>) {
+        println!("Checking \"{}\"...", title);
+        for (state, &value) in map.iter() {
+            approx_eq_assert(value, v[state], &format!("Wrong value in {:?}", state));
         }
+    }
+
+    fn tester(reference: &Report, actual: &Report) {
+        assert_maps("Time", &actual.t_states, &reference.t_states);
+        assert_maps("Counts", &actual.counts, &reference.counts);
+        assert_maps(
+            "Counts with drops",
+            &actual.dropful_counts,
+            &reference.dropful_counts,
+        );
+
+        approx_eq_assert(actual.dropout, reference.dropout, "Dropout is wrong");
+
+        approx_eq_assert(
+            actual.t_serving_avg,
+            reference.t_serving_avg,
+            "Avg. serving time is wrong",
+        );
+
+        approx_eq_assert(
+            actual.n_clients_avg,
+            reference.n_clients_avg,
+            "Avg. n of clients is wrong",
+        );
     }
 
     #[test]
     fn case_one() {
-        let report = run(3.0, 20.0, 1.0);
+        let reference = Report {
+            t_states: enum_map! {
+                State::Empty   => 0.07597501619196396,
+                State::First   => 0.013018780028126743,
+                State::Second  => 0.22780664536179357,
+                State::Waiting => 0.6506552969310084,
+                State::Both    => 0.032544261487107304,
+            },
 
-        let t_states = vec![0.758597, 0.0130194, 0.227571, 0.650963, 0.0325863];
-        let counts = vec![0.0833838, 0.0952409, 0.333333, 0.238093, 0.249949];
-        let dropful_counts = vec![0.0472291, 0.0620404, 0.188802, 0.540162, 0.161766];
+            counts: enum_map! {
+                State::Empty   => 0.08335626064523295,
+                State::First   => 0.09526323676903557,
+                State::Second  => 0.3333333333333333,
+                State::Waiting => 0.23807009656429776,
+                State::Both    => 0.24997707268810038,
+            },
 
-        check(&report.t_states, &t_states);
-        check(&report.counts, &counts);
-        check(&report.dropful_counts, &dropful_counts);
+            dropful_counts: enum_map! {
+                State::Empty   => 0.0472456,
+                State::First   => 0.06209351,
+                State::Second  => 0.18893042,
+                State::Waiting => 0.53980918,
+                State::Both    => 0.16192129,
+            },
 
-        assert!(report.dropout - 0.696653 < EPS);
-        assert!(report.t_serving_avg - 1.76369 < EPS);
-        assert!(report.n_clients_avg - 1.60759 < EPS);
+            dropout: 0.6963212748684511,
+            t_serving_avg: 1.7641820719255652,
+            n_clients_avg: 1.6072245422261517,
+        };
+
+        let actual = run(3.0, 20.0, 1.0);
+
+        tester(&reference, &actual);
     }
 
     #[test]
     fn case_two() {
-        let report = run(1.0, 1.0, 1.0);
+        let reference = Report {
+            t_states: enum_map! {
+                State::Empty   => 0.22211660968919172,
+                State::First   => 0.33346805672671304,
+                State::Second  => 0.22218707296352663,
+                State::Waiting => 0.11115295878727308,
+                State::Both    => 0.11107530183329563,
+            },
 
-        let t_states = vec![0.223083, 0.333209, 0.222046, 0.11069, 0.110972];
-        let counts = vec![0.166769, 0.24998, 0.333334, 0.0833531, 0.166564];
-        let dropful_counts = vec![0.11776, 0.352968, 0.235376, 0.117753, 0.176142];
+            counts: enum_map! {
+                State::Empty   => 0.16666983570972363,
+                State::First   => 0.25001529500140085,
+                State::Second  => 0.3333333380561993,
+                State::Waiting => 0.08331804305479844,
+                State::Both    => 0.1666634881778778,
+            },
 
-        check(&report.t_states, &t_states);
-        check(&report.counts, &counts);
-        check(&report.dropful_counts, &dropful_counts);
+            dropful_counts: enum_map! {
+                State::Empty   => 0.11763326,
+                State::First   => 0.35297929,
+                State::Second  => 0.23526205,
+                State::Waiting => 0.11770195,
+                State::Both    => 0.17642345,
+            },
 
-        assert!(report.dropout - 0.555263 < EPS);
-        assert!(report.t_serving_avg - 2.24861 < EPS);
-        assert!(report.n_clients_avg - 0.998578 < EPS);
+            dropout: 0.555669964286005,
+            t_serving_avg: 2.250242037846493,
+            n_clients_avg: 1.000111650931377,
+        };
+
+        let actual = run(1.0, 1.0, 1.0);
+
+        tester(&reference, &actual);
     }
 }
 
