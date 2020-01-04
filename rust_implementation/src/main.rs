@@ -50,7 +50,7 @@ fn main() {
         Event::SecondFinished => Exp::new(args.mu2).unwrap(),
     };
 
-    let mut simulation = Simulation::new(distributions, args.iterations * 1_000_000, args.tail);
+    let simulation = Simulation::new(distributions, args.iterations * 1_000_000, args.tail);
 
     let seed = args.seed.unwrap_or_else(|| rand::thread_rng().gen());
 

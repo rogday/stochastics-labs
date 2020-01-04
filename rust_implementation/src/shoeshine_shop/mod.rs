@@ -125,6 +125,22 @@ impl std::fmt::Display for Report {
     }
 }
 
+/// Divide each record by sum of all records
+fn normalized<T>(counts: &EnumMap<State, T>) -> EnumMap<State, f64>
+where
+    T: Copy + Into<f64>,
+{
+    let mut res = EnumMap::new();
+    let sum: f64 = counts.values().copied().map_into::<f64>().sum();
+
+    for (state, &count) in counts.iter() {
+        let normalized: f64 = count.into() / sum;
+        res[state] = normalized;
+    }
+
+    res
+}
+
 /// Map state to number of clients in that state
 // Not a hasher because otherwise Eq must be reimplemented as well
 fn client_number(state: State) -> usize {
@@ -132,6 +148,34 @@ fn client_number(state: State) -> usize {
         State::Empty => 0,
         State::First | State::Second => 1,
         State::Waiting | State::Both => 2,
+    }
+}
+
+impl From<&Stats> for Report {
+    fn from(stats: &Stats) -> Self {
+        let mut dropful_counts = EnumMap::<State, u32>::new();
+
+        for (state, count) in stats.counts.iter() {
+            dropful_counts[state] = count + stats.drops[state];
+        }
+
+        // How long there was {0, 1, 2} clients in the system
+        let mut t_client = [0f64; 3];
+        for (state, time) in stats.t_state.iter() {
+            t_client[client_number(state)] += time
+        }
+
+        let dropped: u32 = stats.drops.values().sum();
+
+        Report {
+            t_states: normalized(&stats.t_state),
+            counts: normalized(&stats.counts),
+            dropful_counts: normalized(&dropful_counts),
+
+            dropout: (dropped as f64) / (stats.arrived as f64),
+            t_serving_avg: stats.served_time / (stats.served_clients as f64),
+            n_clients_avg: (t_client[1] + 2.0f64 * t_client[2]) / t_client.iter().sum::<f64>(),
+        }
     }
 }
 
@@ -164,26 +208,7 @@ fn advance(state: State, event: Event) -> Result<Either<State, Transition>, Simu
     }
 }
 
-/// Divide each record by sum of all records
-fn normalized<T>(counts: &EnumMap<State, T>) -> EnumMap<State, f64>
-where
-    T: Copy + Into<f64>,
-{
-    let mut res = EnumMap::new();
-    let sum: f64 = counts.values().copied().map_into::<f64>().sum();
-
-    for (state, &count) in counts.iter() {
-        let normalized: f64 = count.into() / sum;
-        res[state] = normalized;
-    }
-
-    res
-}
-
 pub struct Simulation<T: Distribution<f64>> {
-    stats: Stats,
-    window: TreeMin3<Pair>,
-    // window: BinaryHeap<Pair, U3, Min>,
     iterations: u64,
     distributions: EnumMap<Event, T>,
     log_tail: u64,
@@ -196,54 +221,28 @@ where
     pub fn new(distributions: EnumMap<Event, T>, iterations: u64, log_tail: u64) -> Simulation<T> {
         // no assertions on distributions needed because EnumMap elements are stored in array and therefore always initialized
         Simulation {
-            stats: Stats::default(),
-            window: TreeMin3::new(),
-            // window: BinaryHeap::new(),
             iterations,
             distributions,
             log_tail,
         }
     }
 
-    /// Transform collected data into useful statistics
-    fn form_report(&self) -> Report {
-        let mut dropful_counts = EnumMap::<State, u32>::new();
+    pub fn simulate(&self, prng: &mut SmallRng) -> Result<Report, SimulationError> {
+        let mut window = TreeMin3::new();
 
-        for (state, count) in self.stats.counts.iter() {
-            dropful_counts[state] = count + self.stats.drops[state];
-        }
-
-        // How long there was {0, 1, 2} clients in the system
-        let mut t_client = [0f64; 3];
-        for (state, time) in self.stats.t_state.iter() {
-            t_client[client_number(state)] += time
-        }
-
-        let dropped: u32 = self.stats.drops.values().sum();
-
-        Report {
-            t_states: normalized(&self.stats.t_state),
-            counts: normalized(&self.stats.counts),
-            dropful_counts: normalized(&dropful_counts),
-
-            dropout: (dropped as f64) / (self.stats.arrived as f64),
-            t_serving_avg: self.stats.served_time / (self.stats.served_clients as f64),
-            n_clients_avg: (t_client[1] + 2.0f64 * t_client[2]) / t_client.iter().sum::<f64>(),
-        }
-    }
-
-    pub fn simulate(&mut self, prng: &mut SmallRng) -> Result<Report, SimulationError> {
         // generate dt and insert (from_time + dt, event) in a window
         macro_rules! pusher {
             ($t:expr, $event:expr) => {{
                 let dt: f64 = self.distributions[$event].sample(prng).into();
 
-                self.window.push(Pair {
+                window.push(Pair {
                     time: ($t + dt).into(),
                     event: $event,
                 });
             }};
         }
+
+        let mut stats = Stats::default();
 
         // time of last change of state
         let mut prev = 0f64;
@@ -251,7 +250,7 @@ where
         // basically two floats on stack
         let mut arriving_times = Queue::<f64>::default();
 
-        self.window.push(Pair {
+        window.push(Pair {
             time: 0.0.into(),
             event: Event::Arrived,
         });
@@ -260,9 +259,10 @@ where
         // generate new events if we got a state and not a transition
         // collect statistics everywhere
         for i in 0..self.iterations {
-            let current = self.window.pop();
+            let current = window.pop();
             let new_state = advance(state, current.event)?;
 
+            // TODO: check if this makes 2 loops - one from 0 to iterations-log_tail, and other with the rest
             if self.iterations - i < self.log_tail + 1 {
                 println!(
                     "{:.10}: [{:?}] {:?} ==> [{:?}]",
@@ -272,19 +272,19 @@ where
 
             match current.event {
                 Event::Arrived => {
-                    self.stats.arrived += 1;
+                    stats.arrived += 1;
                     pusher!(current.time.0, Event::Arrived);
                 }
                 Event::SecondFinished => {
-                    self.stats.served_time += current.time.0 - arriving_times.pop_front();
-                    self.stats.served_clients += 1;
+                    stats.served_time += current.time.0 - arriving_times.pop_front();
+                    stats.served_clients += 1;
                 }
                 _ => (),
             }
 
             match new_state {
                 Right(Transition::Dropping) => {
-                    self.stats.drops[state] += 1;
+                    stats.drops[state] += 1;
                     continue;
                 }
                 Left(_) if current.event == Event::Arrived => {
@@ -294,14 +294,15 @@ where
                 Left(State::Second) => pusher!(current.time.0, Event::SecondFinished),
                 _ => (),
             }
-            self.stats.t_state[state] += current.time.0 - prev;
+            stats.t_state[state] += current.time.0 - prev;
 
             prev = current.time.0;
             state = new_state.left().unwrap();
 
-            self.stats.counts[state] += 1;
+            stats.counts[state] += 1;
         }
 
-        Ok(self.form_report())
+        // Transform collected data into Report with useful statistics
+        Ok((&stats).into())
     }
 }

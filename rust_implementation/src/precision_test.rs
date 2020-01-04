@@ -22,7 +22,7 @@ fn run(lambda: f64, mu1: f64, mu2: f64) -> Report {
         Event::SecondFinished => Exp::new(mu2).unwrap(),
     };
 
-    let mut simulation = Simulation::new(distributions, ITERATIONS, 0);
+    let simulation = Simulation::new(distributions, ITERATIONS, 0);
 
     let seed = rand::thread_rng().gen();
     let mut prng: SmallRng = SeedableRng::seed_from_u64(seed);
