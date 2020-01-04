@@ -10,6 +10,7 @@ pub enum Event {
 
 impl Default for Event {
     fn default() -> Self {
+        // because if it leaks from custom queue, it will trigger simulation error
         Event::SecondFinished
     }
 }

@@ -41,7 +41,6 @@ where
     /// Determine new state or pseudostate(Transition) from current state and incoming event
     fn advance(state: State, event: Event) -> Result<Either<State, Transition>, SimulationError> {
         use State::*;
-        use Transition::*;
 
         // explicit matching to ensure compile time error in case of newly added state
         match event {
@@ -49,7 +48,7 @@ where
                 Empty => Left(First),
                 Second => Left(Both),
                 // first chair is occupied
-                First | Waiting | Both => Right(Dropping),
+                First | Waiting | Both => Right(Transition::Dropping),
             }),
             Event::FirstFinished => match state {
                 First => Ok(Left(Second)),
@@ -82,6 +81,7 @@ where
             }};
         }
 
+        // various metrics
         let mut stats = Stats::default();
 
         // time of last change of state
@@ -99,24 +99,26 @@ where
         // generate new events if we got a state and not a transition
         // collect statistics everywhere
         for i in 0..self.iterations {
-            let current = window.pop();
-            let new_state = Simulation::<T>::advance(state, current.event)?;
+            // current time and event
+            let Pair {
+                time: OrderedFloat(time),
+                event,
+            } = window.pop();
+
+            let new_state = Simulation::<T>::advance(state, event)?;
 
             // TODO: check if this makes 2 loops - one from 0 to iterations-log_tail, and other with the rest
             if self.iterations - i < self.log_tail + 1 {
-                println!(
-                    "{:.10}: [{:?}] {:?} ==> [{:?}]",
-                    i, state, current.event, new_state
-                );
+                println!("{:.10}: [{:?}] {:?} ==> [{:?}]", i, state, event, new_state);
             }
 
-            match current.event {
+            match event {
                 Event::Arrived => {
                     stats.arrived += 1;
-                    pusher!(current.time.0, Event::Arrived);
+                    pusher!(time, Event::Arrived);
                 }
                 Event::SecondFinished => {
-                    stats.served_time += current.time.0 - arriving_times.pop_front();
+                    stats.served_time += time - arriving_times.pop_front();
                     stats.served_clients += 1;
                 }
                 _ => (),
@@ -127,16 +129,18 @@ where
                     stats.drops[state] += 1;
                     continue;
                 }
-                Left(_) if current.event == Event::Arrived => {
-                    arriving_times.push_back(current.time.0);
-                    pusher!(current.time.0, Event::FirstFinished);
+                // Left(_) = new state is not pseudostate
+                Left(_) if event == Event::Arrived => {
+                    arriving_times.push_back(time);
+                    pusher!(time, Event::FirstFinished);
                 }
-                Left(State::Second) => pusher!(current.time.0, Event::SecondFinished),
+                Left(State::Second) => pusher!(time, Event::SecondFinished),
                 _ => (),
             }
-            stats.t_state[state] += current.time.0 - prev;
+            stats.t_state[state] += time - prev;
 
-            prev = current.time.0;
+            prev = time;
+            // dealt with Right in match above using continue
             state = new_state.left().unwrap();
 
             stats.counts[state] += 1;
