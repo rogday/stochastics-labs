@@ -25,6 +25,34 @@ pub struct Simulation<T: Distribution<f64>> {
     log_tail: u64,
 }
 
+/// Determine new state or pseudostate(Transition) from current state and incoming event
+fn advance(state: State, event: Event) -> Result<Either<State, Transition>, SimulationError> {
+    use State::*;
+
+    // explicit matching to ensure compile time error in case of newly added state
+    match event {
+        Event::Arrived => Ok(match state {
+            Empty => Left(First),
+            Second => Left(Both),
+            // first chair is occupied
+            First | Waiting | Both => Right(Transition::Dropping),
+        }),
+        Event::FirstFinished => match state {
+            First => Ok(Left(Second)),
+            Both => Ok(Left(Waiting)),
+            // first chair is empty/already finished
+            Empty | Second | Waiting => Err(SimulationError::InvalidState),
+        },
+        Event::SecondFinished => match state {
+            Second => Ok(Left(Empty)),
+            Waiting => Ok(Left(Second)),
+            Both => Ok(Left(First)),
+            // second chair is empty
+            Empty | First => Err(SimulationError::InvalidState),
+        },
+    }
+}
+
 impl<T> Simulation<T>
 where
     T: Distribution<f64>,
@@ -35,34 +63,6 @@ where
             iterations,
             distributions,
             log_tail,
-        }
-    }
-
-    /// Determine new state or pseudostate(Transition) from current state and incoming event
-    fn advance(state: State, event: Event) -> Result<Either<State, Transition>, SimulationError> {
-        use State::*;
-
-        // explicit matching to ensure compile time error in case of newly added state
-        match event {
-            Event::Arrived => Ok(match state {
-                Empty => Left(First),
-                Second => Left(Both),
-                // first chair is occupied
-                First | Waiting | Both => Right(Transition::Dropping),
-            }),
-            Event::FirstFinished => match state {
-                First => Ok(Left(Second)),
-                Both => Ok(Left(Waiting)),
-                // first chair is empty/already finished
-                Empty | Second | Waiting => Err(SimulationError::InvalidState),
-            },
-            Event::SecondFinished => match state {
-                Second => Ok(Left(Empty)),
-                Waiting => Ok(Left(Second)),
-                Both => Ok(Left(First)),
-                // second chair is empty
-                Empty | First => Err(SimulationError::InvalidState),
-            },
         }
     }
 
@@ -105,7 +105,7 @@ where
                 event,
             } = window.pop();
 
-            let new_state = Simulation::<T>::advance(state, event)?;
+            let new_state = advance(state, event)?;
 
             // TODO: check if this makes 2 loops - one from 0 to iterations-log_tail, and other with the rest
             if self.iterations - i < self.log_tail + 1 {
