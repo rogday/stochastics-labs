@@ -1,8 +1,7 @@
-use enum_map::{Enum, EnumMap};
+use enum_map::EnumMap;
 
 use either::*;
 
-use itertools::*;
 use ordered_float::*;
 
 use rand::rngs::SmallRng;
@@ -11,201 +10,13 @@ use rand_distr::Distribution;
 mod utils;
 use utils::*;
 
-#[derive(Enum, Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
-#[repr(usize)]
-pub enum Event {
-    Arrived,
-    FirstFinished,
-    SecondFinished,
-}
-
-impl Default for Event {
-    fn default() -> Self {
-        Event::SecondFinished
-    }
-}
-
-#[derive(Enum, Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
-#[repr(usize)]
-pub enum State {
-    Empty,
-    First,
-    Second,
-    Waiting,
-    Both,
-}
-#[derive(Debug)]
-enum Transition {
-    Dropping,
-}
-
-#[derive(Debug)]
-pub enum SimulationError {
-    InvalidState,
-}
+mod statistics;
+pub use statistics::*;
 
 #[derive(Default, Copy, Clone, Debug, Ord, Eq, PartialEq, PartialOrd)]
 struct Pair {
     time: OrderedFloat<f64>,
     event: Event,
-}
-
-#[derive(Debug, Default)]
-struct Stats {
-    /// How many times the system was in the state S
-    counts: EnumMap<State, u32>,
-
-    /// How many times the system dropped client in the state S
-    drops: EnumMap<State, u32>,
-
-    /// Time spent in the state S
-    t_state: EnumMap<State, f64>,
-
-    /// How long the system was in serving state (From First to SecondFinished)
-    served_time: f64,
-
-    /// How many clients were served
-    served_clients: u32,
-
-    /// How many clients arrived including dropped
-    arrived: u32,
-}
-
-/// Basically normalized Stats
-pub struct Report {
-    /// Time spent in the state S, *Normalized*
-    pub t_states: EnumMap<State, f64>,
-
-    /// How many times the system was in the state S, *Normalized*
-    pub counts: EnumMap<State, f64>,
-
-    /// How many times the system dropped client in the state S, *Normalized*
-    pub dropful_counts: EnumMap<State, f64>,
-
-    /// Ratio of clients that walked in during busy state to all arrived clients
-    pub dropout: f64,
-
-    /// Average serving time (from Arrived to SecondFinished)
-    pub t_serving_avg: f64,
-
-    /// Average number of clients in the system
-    pub n_clients_avg: f64,
-}
-
-impl Report {
-    /// Print normalized table-like report for all states
-    fn print_report(
-        f: &mut std::fmt::Formatter<'_>,
-        title: &str,
-        counts: &EnumMap<State, f64>,
-    ) -> std::fmt::Result {
-        writeln!(f, "{}", title)?;
-
-        for (state, value) in counts.iter() {
-            writeln!(f, "{:?}:   \t{}", state, value)?;
-        }
-
-        writeln!(f)
-    }
-}
-
-impl std::fmt::Display for Report {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Report::print_report(f, "\nTime in states: ", &self.t_states)?;
-        Report::print_report(f, "Entries in states: ", &self.counts)?;
-        Report::print_report(f, "Entries in states with dropouts: ", &self.dropful_counts)?;
-
-        writeln!(
-            f,
-            "Dropout:                   {}\n\
-             Average serving time:      {}\n\
-             Average number of clients: {}",
-            self.dropout, self.t_serving_avg, self.n_clients_avg
-        )
-    }
-}
-
-/// Divide each record by sum of all records
-fn normalized<T>(counts: &EnumMap<State, T>) -> EnumMap<State, f64>
-where
-    T: Copy + Into<f64>,
-{
-    let mut res = EnumMap::new();
-    let sum: f64 = counts.values().copied().map_into::<f64>().sum();
-
-    for (state, &count) in counts.iter() {
-        let normalized: f64 = count.into() / sum;
-        res[state] = normalized;
-    }
-
-    res
-}
-
-/// Map state to number of clients in that state
-// Not a hasher because otherwise Eq must be reimplemented as well
-fn client_number(state: State) -> usize {
-    match state {
-        State::Empty => 0,
-        State::First | State::Second => 1,
-        State::Waiting | State::Both => 2,
-    }
-}
-
-impl From<&Stats> for Report {
-    fn from(stats: &Stats) -> Self {
-        let mut dropful_counts = EnumMap::<State, u32>::new();
-
-        for (state, count) in stats.counts.iter() {
-            dropful_counts[state] = count + stats.drops[state];
-        }
-
-        // How long there was {0, 1, 2} clients in the system
-        let mut t_client = [0f64; 3];
-        for (state, time) in stats.t_state.iter() {
-            t_client[client_number(state)] += time
-        }
-
-        let dropped: u32 = stats.drops.values().sum();
-
-        Report {
-            t_states: normalized(&stats.t_state),
-            counts: normalized(&stats.counts),
-            dropful_counts: normalized(&dropful_counts),
-
-            dropout: (dropped as f64) / (stats.arrived as f64),
-            t_serving_avg: stats.served_time / (stats.served_clients as f64),
-            n_clients_avg: (t_client[1] + 2.0f64 * t_client[2]) / t_client.iter().sum::<f64>(),
-        }
-    }
-}
-
-/// Determine new state or pseudostate(Transition) from current state and incoming event
-fn advance(state: State, event: Event) -> Result<Either<State, Transition>, SimulationError> {
-    use State::*;
-    use Transition::*;
-
-    // explicit matching to ensure compile time error in case of newly added state
-    match event {
-        Event::Arrived => Ok(match state {
-            Empty => Left(First),
-            Second => Left(Both),
-            // first chair is occupied
-            First | Waiting | Both => Right(Dropping),
-        }),
-        Event::FirstFinished => match state {
-            First => Ok(Left(Second)),
-            Both => Ok(Left(Waiting)),
-            // first chair is empty/already finished
-            Empty | Second | Waiting => Err(SimulationError::InvalidState),
-        },
-        Event::SecondFinished => match state {
-            Second => Ok(Left(Empty)),
-            Waiting => Ok(Left(Second)),
-            Both => Ok(Left(First)),
-            // second chair is empty
-            Empty | First => Err(SimulationError::InvalidState),
-        },
-    }
 }
 
 pub struct Simulation<T: Distribution<f64>> {
@@ -224,6 +35,35 @@ where
             iterations,
             distributions,
             log_tail,
+        }
+    }
+
+    /// Determine new state or pseudostate(Transition) from current state and incoming event
+    fn advance(state: State, event: Event) -> Result<Either<State, Transition>, SimulationError> {
+        use State::*;
+        use Transition::*;
+
+        // explicit matching to ensure compile time error in case of newly added state
+        match event {
+            Event::Arrived => Ok(match state {
+                Empty => Left(First),
+                Second => Left(Both),
+                // first chair is occupied
+                First | Waiting | Both => Right(Dropping),
+            }),
+            Event::FirstFinished => match state {
+                First => Ok(Left(Second)),
+                Both => Ok(Left(Waiting)),
+                // first chair is empty/already finished
+                Empty | Second | Waiting => Err(SimulationError::InvalidState),
+            },
+            Event::SecondFinished => match state {
+                Second => Ok(Left(Empty)),
+                Waiting => Ok(Left(Second)),
+                Both => Ok(Left(First)),
+                // second chair is empty
+                Empty | First => Err(SimulationError::InvalidState),
+            },
         }
     }
 
@@ -260,7 +100,7 @@ where
         // collect statistics everywhere
         for i in 0..self.iterations {
             let current = window.pop();
-            let new_state = advance(state, current.event)?;
+            let new_state = Simulation::<T>::advance(state, current.event)?;
 
             // TODO: check if this makes 2 loops - one from 0 to iterations-log_tail, and other with the rest
             if self.iterations - i < self.log_tail + 1 {
@@ -303,6 +143,6 @@ where
         }
 
         // Transform collected data into Report with useful statistics
-        Ok((&stats).into())
+        Ok(Report::from(&stats))
     }
 }
