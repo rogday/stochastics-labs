@@ -105,8 +105,8 @@ fn client_number(state: State) -> usize {
     }
 }
 
-impl From<&Stats> for Report {
-    fn from(stats: &Stats) -> Self {
+impl From<Stats> for Report {
+    fn from(stats: Stats) -> Self {
         let mut dropful_counts = EnumMap::<State, u32>::new();
 
         for (state, count) in stats.counts.iter() {

@@ -147,6 +147,6 @@ where
         }
 
         // Transform collected data into Report with useful statistics
-        Ok(Report::from(&stats))
+        Ok(stats.into())
     }
 }
