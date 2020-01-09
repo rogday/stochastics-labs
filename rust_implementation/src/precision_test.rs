@@ -33,38 +33,38 @@ fn run(lambda: f64, mu1: f64, mu2: f64) -> Report {
     simulation.simulate(&mut prng).expect("Simulation failed")
 }
 
-fn approx_eq_assert(a: f64, b: f64, msg: &str) {
+fn approx_eq(reference: f64, actual: f64, msg: &str) {
     assert!(
-        (a - b).abs() < EPS,
-        format!("{}: expected {}, got {}", msg, b, a)
+        (reference - actual).abs() < EPS,
+        format!("{}: expected {}, got {}", msg, reference, actual)
     );
 }
 
-fn assert_maps(title: &str, map: &EnumMap<State, f64>, v: &EnumMap<State, f64>) {
-    println!("Checking \"{}\"...", title);
-    for (state, &value) in map.iter() {
-        approx_eq_assert(value, v[state], &format!("Wrong value in {:?}", state));
+fn compare_maps(title: &str, reference: &EnumMap<State, f64>, actual: &EnumMap<State, f64>) {
+    println!("Comparing \"{}\"...", title);
+    for (state, &value) in reference.iter() {
+        approx_eq(value, actual[state], &format!("Wrong value in {:?}", state));
     }
 }
 
-fn tester(reference: &Report, actual: &Report) {
-    assert_maps("Time", &actual.t_states, &reference.t_states);
-    assert_maps("Counts", &actual.counts, &reference.counts);
-    assert_maps(
+fn compare(reference: &Report, actual: &Report) {
+    compare_maps("Time", &actual.t_states, &reference.t_states);
+    compare_maps("Counts", &actual.counts, &reference.counts);
+    compare_maps(
         "Counts with drops",
         &actual.dropful_counts,
         &reference.dropful_counts,
     );
 
-    approx_eq_assert(actual.dropout, reference.dropout, "Dropout is wrong");
+    approx_eq(actual.dropout, reference.dropout, "Dropout is wrong");
 
-    approx_eq_assert(
+    approx_eq(
         actual.t_serving_avg,
         reference.t_serving_avg,
         "Avg. serving time is wrong",
     );
 
-    approx_eq_assert(
+    approx_eq(
         actual.n_clients_avg,
         reference.n_clients_avg,
         "Avg. n of clients is wrong",
@@ -105,7 +105,7 @@ fn case_one() {
 
     let actual = run(3.0, 20.0, 1.0);
 
-    tester(&reference, &actual);
+    compare(&reference, &actual);
 }
 
 #[test]
@@ -142,5 +142,5 @@ fn case_two() {
 
     let actual = run(1.0, 1.0, 1.0);
 
-    tester(&reference, &actual);
+    compare(&reference, &actual);
 }

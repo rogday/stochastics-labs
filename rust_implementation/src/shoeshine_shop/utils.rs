@@ -1,6 +1,6 @@
 // TODO: get rid of this
 /// Wrapper around an array of two elements
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Queue<T: Copy> {
     buffer: [T; 2],
     end: usize,
@@ -20,15 +20,15 @@ impl<T: Copy> Queue<T> {
 
 // TODO: get rid of this
 /// Sorted array on stack with capacity 3
-#[derive(Default)]
-pub struct TreeMin3<T> {
+#[derive(Debug, Default)]
+pub struct PriorityQueue3<T> {
     buffer: [T; 3],
     len: usize,
 }
 
-impl<T: PartialOrd + Copy + Default + std::fmt::Debug> TreeMin3<T> {
+impl<T: PartialOrd + Copy + Default + std::fmt::Debug> PriorityQueue3<T> {
     pub fn new() -> Self {
-        TreeMin3 {
+        PriorityQueue3 {
             buffer: [T::default(); 3],
             len: 0,
         }
