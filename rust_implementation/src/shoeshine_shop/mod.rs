@@ -13,12 +13,6 @@ use utils::*;
 mod statistics;
 pub use statistics::*;
 
-#[derive(Default, Copy, Clone, Debug, Ord, Eq, PartialEq, PartialOrd)]
-struct Pair {
-    time: OrderedFloat<f64>,
-    event: Event,
-}
-
 pub struct Simulation<T: Distribution<f64>> {
     iterations: u64,
     distributions: EnumMap<Event, T>,
@@ -74,10 +68,7 @@ where
             ($t:expr, $event:expr) => {{
                 let dt: f64 = self.distributions[$event].sample(prng).into();
 
-                window.push(Pair {
-                    time: ($t + dt).into(),
-                    event: $event,
-                });
+                window.push((($t + dt).into(), $event));
             }};
         }
 
@@ -90,20 +81,14 @@ where
         // basically two floats on stack
         let mut arriving_times = Queue::<f64>::default();
 
-        window.push(Pair {
-            time: 0.0.into(),
-            event: Event::Arrived,
-        });
+        window.push((0.0.into(), Event::Arrived));
 
         // get current event, resubscribe it if needed, determine new state,
         // generate new events if we got a state and not a transition
         // collect statistics everywhere
         for i in 0..self.iterations {
             // current time and event
-            let Pair {
-                time: OrderedFloat(time),
-                event,
-            } = window.pop();
+            let (OrderedFloat(time), event) = window.pop();
 
             let new_state = advance(state, event)?;
 
@@ -147,6 +132,6 @@ where
         }
 
         // Transform collected data into Report with useful statistics
-        Ok(stats.into())
+        Ok(Report::from(stats))
     }
 }

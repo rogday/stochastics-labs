@@ -1,6 +1,7 @@
 use enum_map::Enum;
 
-#[derive(Enum, Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
+// used in priority queue hence Ord
+#[derive(Enum, Debug, Copy, Clone, PartialOrd, PartialEq, Eq, Ord)]
 #[repr(usize)]
 pub enum Event {
     Arrived,
@@ -15,7 +16,7 @@ impl Default for Event {
     }
 }
 
-#[derive(Enum, Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd, Hash)]
+#[derive(Enum, Debug, Copy, Clone)]
 #[repr(usize)]
 pub enum State {
     Empty,

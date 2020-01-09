@@ -26,6 +26,7 @@ pub struct Stats {
 }
 
 /// Basically normalized Stats
+#[derive(Debug)]
 pub struct Report {
     /// Time spent in the state S, *Normalized*
     pub t_states: EnumMap<State, f64>,
