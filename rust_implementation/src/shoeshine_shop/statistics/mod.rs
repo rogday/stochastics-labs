@@ -110,26 +110,27 @@ impl From<Stats> for Report {
     fn from(stats: Stats) -> Self {
         let mut dropful_counts = EnumMap::<State, u32>::new();
 
-        for (state, count) in stats.counts.iter() {
+        for (state, count) in &stats.counts {
             dropful_counts[state] = count + stats.drops[state];
         }
 
         // How long there was {0, 1, 2} clients in the system
-        let mut t_client = [0f64; 3];
-        for (state, time) in stats.t_state.iter() {
+        let mut t_client: [f64; 3] = [0.; 3];
+        for (state, time) in &stats.t_state {
             t_client[client_number(state)] += time
         }
 
-        let dropped: u32 = stats.drops.values().sum();
+        let dropped = stats.drops.values().sum::<u32>() as f64;
+        let system_time: f64 = t_client.iter().sum();
 
         Report {
             t_states: normalized(&stats.t_state),
             counts: normalized(&stats.counts),
             dropful_counts: normalized(&dropful_counts),
 
-            dropout: (dropped as f64) / (stats.arrived as f64),
+            dropout: dropped / (stats.arrived as f64),
             t_serving_avg: stats.served_time / (stats.served_clients as f64),
-            n_clients_avg: (t_client[1] + 2.0f64 * t_client[2]) / t_client.iter().sum::<f64>(),
+            n_clients_avg: (t_client[1] + 2. * t_client[2]) / system_time,
         }
     }
 }

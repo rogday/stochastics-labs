@@ -74,21 +74,18 @@ where
 
         // various metrics
         let mut stats = Stats::default();
+        let mut arrived_time = Queue::default();
+        let mut last_state_change: f64 = 0.;
 
-        let mut last_state_change = 0f64;
+        // starting conditions
         let mut state = State::Empty;
-        // basically two floats on stack
-        let mut arrived_time = Queue::<f64>::default();
-
         window.push((0.0.into(), Event::Arrived));
 
         // get current event, resubscribe it if needed, determine new state,
         // generate new events if we got a state and not a transition
         // collect statistics everywhere
         for i in 0..self.iterations {
-            // current time and event
             let (OrderedFloat(current_time), event) = window.pop();
-
             let new_state = advance(state, event)?;
 
             // TODO: check if this makes 2 loops - one from 0 to iterations-log_tail, and other with the rest
