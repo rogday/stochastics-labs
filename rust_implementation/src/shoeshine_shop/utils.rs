@@ -3,7 +3,7 @@
 #[derive(Debug, Default)]
 pub struct Queue<T: Copy> {
     buffer: [T; 2],
-    end: usize,
+    end:    usize,
 }
 
 impl<T: Copy> Queue<T> {
@@ -23,15 +23,12 @@ impl<T: Copy> Queue<T> {
 #[derive(Debug, Default)]
 pub struct PriorityQueue3<T> {
     buffer: [T; 3],
-    len: usize,
+    len:    usize,
 }
 
 impl<T: PartialOrd + Copy + Default + std::fmt::Debug> PriorityQueue3<T> {
     pub fn new() -> Self {
-        PriorityQueue3 {
-            buffer: [T::default(); 3],
-            len: 0,
-        }
+        PriorityQueue3 { buffer: [T::default(); 3], len: 0 }
     }
 
     pub fn push(&mut self, val: T) {

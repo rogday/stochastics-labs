@@ -1,22 +1,18 @@
-use enum_map::EnumMap;
-
 use either::*;
-
+use enum_map::EnumMap;
 use ordered_float::*;
-
 use rand::rngs::SmallRng;
 use rand_distr::Distribution;
 
+mod statistics;
 mod utils;
+pub use statistics::*;
 use utils::*;
 
-mod statistics;
-pub use statistics::*;
-
-pub struct Simulation<T: Distribution<f64>> {
-    iterations: u64,
-    distributions: EnumMap<Event, T>,
-    log_tail: u64,
+pub struct Simulation<T> {
+    pub distributions: EnumMap<Event, T>,
+    pub iterations:    u64,
+    pub log_tail:      u64,
 }
 
 /// Determine new state or pseudostate(Transition) from current state and incoming event
@@ -51,15 +47,6 @@ impl<T> Simulation<T>
 where
     T: Distribution<f64>,
 {
-    pub fn new(distributions: EnumMap<Event, T>, iterations: u64, log_tail: u64) -> Simulation<T> {
-        // no assertions on distributions needed because EnumMap elements are stored in array and therefore always initialized
-        Simulation {
-            iterations,
-            distributions,
-            log_tail,
-        }
-    }
-
     pub fn simulate(&self, prng: &mut SmallRng) -> Result<Report, SimulationError> {
         let mut window = PriorityQueue3::new();
 
@@ -98,11 +85,11 @@ where
                     stats.arrived += 1;
                     pusher!(current_time, Event::Arrived);
                 }
+                Event::FirstFinished => (),
                 Event::SecondFinished => {
                     stats.served_time += current_time - arrived_time.pop_front();
                     stats.served_clients += 1;
                 }
-                _ => (),
             }
 
             match new_state {

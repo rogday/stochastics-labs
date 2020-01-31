@@ -1,50 +1,52 @@
-mod enums;
-pub use enums::*;
-
 use enum_map::EnumMap;
 use itertools::*;
 
+mod enums;
+pub use enums::*;
+
+#[rustfmt::skip]
 #[derive(Debug, Default)]
 pub struct Stats {
     /// How many times the system was in the state S
-    pub counts: EnumMap<State, u32>,
+    pub counts:         EnumMap<State, u32>,
 
     /// How many times the system dropped client in the state S
-    pub drops: EnumMap<State, u32>,
+    pub drops:          EnumMap<State, u32>,
 
     /// Time spent in the state S
-    pub t_state: EnumMap<State, f64>,
+    pub t_state:        EnumMap<State, f64>,
 
     /// How long the system was in serving state (From First to SecondFinished)
-    pub served_time: f64,
+    pub served_time:    f64,
 
     /// How many clients were served
     pub served_clients: u32,
 
     /// How many clients arrived including dropped
-    pub arrived: u32,
+    pub arrived:        u32,
 }
 
 /// Basically normalized Stats
+#[rustfmt::skip]
 #[derive(Debug)]
 pub struct Report {
     /// Time spent in the state S, *Normalized*
-    pub t_states: EnumMap<State, f64>,
+    pub t_states:       EnumMap<State, f64>,
 
     /// How many times the system was in the state S, *Normalized*
-    pub counts: EnumMap<State, f64>,
+    pub counts:         EnumMap<State, f64>,
 
     /// How many times the system dropped client in the state S, *Normalized*
     pub dropful_counts: EnumMap<State, f64>,
 
     /// Ratio of clients that walked in during busy state to all arrived clients
-    pub dropout: f64,
+    pub dropout:        f64,
 
     /// Average serving time (from Arrived to SecondFinished)
-    pub t_serving_avg: f64,
+    pub t_serving_avg:  f64,
 
     /// Average number of clients in the system
-    pub n_clients_avg: f64,
+    pub n_clients_avg:  f64,
 }
 
 impl Report {
@@ -81,10 +83,7 @@ impl std::fmt::Display for Report {
 }
 
 /// Divide each record by sum of all records
-fn normalized<T>(counts: &EnumMap<State, T>) -> EnumMap<State, f64>
-where
-    T: Copy + Into<f64>,
-{
+fn normalized<T: Copy + Into<f64>>(counts: &EnumMap<State, T>) -> EnumMap<State, f64> {
     let mut res = EnumMap::new();
     let sum: f64 = counts.values().copied().map_into::<f64>().sum();
 
@@ -124,11 +123,11 @@ impl From<Stats> for Report {
         let system_time: f64 = t_client.iter().sum();
 
         Report {
-            t_states: normalized(&stats.t_state),
-            counts: normalized(&stats.counts),
+            t_states:       normalized(&stats.t_state),
+            counts:         normalized(&stats.counts),
             dropful_counts: normalized(&dropful_counts),
 
-            dropout: dropped / (stats.arrived as f64),
+            dropout:       dropped / (stats.arrived as f64),
             t_serving_avg: stats.served_time / (stats.served_clients as f64),
             n_clients_avg: (t_client[1] + 2. * t_client[2]) / system_time,
         }

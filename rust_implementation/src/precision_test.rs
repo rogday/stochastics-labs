@@ -1,9 +1,9 @@
-mod shoeshine_shop;
-use shoeshine_shop::*;
-
 use enum_map::{enum_map, EnumMap};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rand_distr::Exp;
+
+mod shoeshine_shop;
+use shoeshine_shop::*;
 
 const EPS: f64 = 0.01;
 
@@ -16,13 +16,15 @@ const ITERATIONS: u64 = 50_000_000;
 const ITERATIONS: u64 = 1_000_000;
 
 fn run(lambda: f64, mu1: f64, mu2: f64) -> Report {
-    let distributions = enum_map! {
-        Event::Arrived        => Exp::new(lambda).unwrap(),
-        Event::FirstFinished  => Exp::new(mu1).unwrap(),
-        Event::SecondFinished => Exp::new(mu2).unwrap(),
+    let simulation = Simulation {
+        iterations:    ITERATIONS,
+        log_tail:      0,
+        distributions: enum_map! {
+            Event::Arrived        => Exp::new(lambda).unwrap(),
+            Event::FirstFinished  => Exp::new(mu1).unwrap(),
+            Event::SecondFinished => Exp::new(mu2).unwrap(),
+        },
     };
-
-    let simulation = Simulation::new(distributions, ITERATIONS, 0);
 
     let seed = rand::thread_rng().gen();
     let mut prng: SmallRng = SeedableRng::seed_from_u64(seed);
@@ -50,25 +52,11 @@ fn compare_maps(title: &str, reference: &EnumMap<State, f64>, actual: &EnumMap<S
 fn compare(reference: &Report, actual: &Report) {
     compare_maps("Time", &actual.t_states, &reference.t_states);
     compare_maps("Counts", &actual.counts, &reference.counts);
-    compare_maps(
-        "Counts with drops",
-        &actual.dropful_counts,
-        &reference.dropful_counts,
-    );
+    compare_maps("Counts with drops", &actual.dropful_counts, &reference.dropful_counts);
 
     approx_eq(actual.dropout, reference.dropout, "Dropout is wrong");
-
-    approx_eq(
-        actual.t_serving_avg,
-        reference.t_serving_avg,
-        "Avg. serving time is wrong",
-    );
-
-    approx_eq(
-        actual.n_clients_avg,
-        reference.n_clients_avg,
-        "Avg. n of clients is wrong",
-    );
+    approx_eq(actual.t_serving_avg, reference.t_serving_avg, "Avg. serving time is wrong");
+    approx_eq(actual.n_clients_avg, reference.n_clients_avg, "Avg. n of clients is wrong");
 }
 
 #[test]
@@ -98,7 +86,7 @@ fn case_one() {
             State::Both    => 0.16192129,
         },
 
-        dropout: 0.6963212748684511,
+        dropout:       0.6963212748684511,
         t_serving_avg: 1.7641820719255652,
         n_clients_avg: 1.6072245422261517,
     };
@@ -135,7 +123,7 @@ fn case_two() {
             State::Both    => 0.17642345,
         },
 
-        dropout: 0.555669964286005,
+        dropout:       0.555669964286005,
         t_serving_avg: 2.250242037846493,
         n_clients_avg: 1.000111650931377,
     };
