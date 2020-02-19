@@ -9,14 +9,7 @@ edition = "2018"
 [dependencies]
 rand = { version = "0.7.3", features = [ "small_rng" ] }
 rand_distr = "0.2.2"
-ordered-float = "1.0.2"
-
-itertools = "0.8.2"
-structopt = "0.3.8"
 
 enum-map = "0.6.2"
-either = "1.5.3"
-
-[[test]]
-name = "precision"
-path = "src/precision_test.rs"
+structopt = "0.3.9"
+shoeshine_shop = {path = "../shoeshine_shop"}

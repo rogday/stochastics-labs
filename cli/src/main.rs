@@ -3,7 +3,7 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rand_distr::Exp;
 use structopt::StructOpt;
 
-mod shoeshine_shop;
+use shoeshine_shop::*;
 
 ///shoe shine shop simulation
 ///
@@ -40,7 +40,6 @@ struct Args {
 }
 
 fn main() {
-    use shoeshine_shop::*;
     let args = Args::from_args();
 
     assert!(args.iterations <= 1_000_000, "Number of iterations is too high.");

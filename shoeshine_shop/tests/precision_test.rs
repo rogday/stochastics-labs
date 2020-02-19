@@ -2,7 +2,6 @@ use enum_map::{enum_map, EnumMap};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rand_distr::Exp;
 
-mod shoeshine_shop;
 use shoeshine_shop::*;
 
 const EPS: f64 = 0.01;
