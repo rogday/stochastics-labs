@@ -1,13 +1,16 @@
 use either::*;
 use enum_map::EnumMap;
 use ordered_float::*;
+
 use rand::rngs::SmallRng;
 use rand_distr::Distribution;
 
+use arraydeque::ArrayDeque;
+use staticvec::StaticHeap;
+use std::cmp::Reverse;
+
 mod statistics;
-mod utils;
 pub use statistics::*;
-use utils::*;
 
 pub struct Simulation<T> {
     pub distributions: EnumMap<Event, T>,
@@ -48,31 +51,31 @@ where
     T: Distribution<f64>,
 {
     pub fn simulate(&self, prng: &mut SmallRng) -> Result<Report, SimulationError> {
-        let mut window = PriorityQueue3::new();
+        let mut window = StaticHeap::<_, 3>::new();
 
         // generate dt and insert (from_time + dt, event) in a window
         macro_rules! pusher {
             ($t:expr, $event:expr) => {{
                 let dt: f64 = self.distributions[$event].sample(prng).into();
 
-                window.push((($t + dt).into(), $event));
+                window.push(Reverse((($t + dt).into(), $event)));
             }};
         }
 
         // various metrics
         let mut stats = Stats::default();
-        let mut arrived_time = Queue::default();
+        let mut arrived_time = ArrayDeque::<[f64; 2]>::default();
         let mut last_state_change: f64 = 0.;
 
         // starting conditions
         let mut state = State::Empty;
-        window.push((0.0.into(), Event::Arrived));
+        window.push(Reverse((0.0.into(), Event::Arrived)));
 
         // get current event, resubscribe it if needed, determine new state,
         // generate new events if we got a state and not a transition
         // collect statistics everywhere
         for i in 0..self.iterations {
-            let (OrderedFloat(current_time), event) = window.pop();
+            let Reverse((OrderedFloat(current_time), event)) = window.pop().unwrap();
             let new_state = advance(state, event)?;
 
             // TODO: check if this makes 2 loops - one from 0 to iterations-log_tail, and other with the rest
@@ -87,7 +90,7 @@ where
                 }
                 Event::FirstFinished => (),
                 Event::SecondFinished => {
-                    stats.served_time += current_time - arrived_time.pop_front();
+                    stats.served_time += current_time - arrived_time.pop_front().unwrap();
                     stats.served_clients += 1;
                 }
             }
@@ -101,7 +104,7 @@ where
                 // transitioned to real state
                 Left(new_state) => {
                     if let Event::Arrived = event {
-                        arrived_time.push_back(current_time);
+                        arrived_time.push_back(current_time).unwrap();
                         pusher!(current_time, Event::FirstFinished);
                     } else if let State::Second = new_state {
                         pusher!(current_time, Event::SecondFinished)

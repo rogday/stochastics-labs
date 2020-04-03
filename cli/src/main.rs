@@ -63,6 +63,6 @@ fn main() {
 
     match simulation.simulate(&mut prng) {
         Ok(report) => println!("{}", report),
-        Err(error) => panic!("Error: {:?}, seed: {}", error, seed),
+        Err(error) => eprintln!("Error: {:?}, seed: {}", error, seed),
     }
 }
