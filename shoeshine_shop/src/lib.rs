@@ -9,8 +9,10 @@ use arraydeque::ArrayDeque;
 use staticvec::StaticHeap;
 use std::cmp::Reverse;
 
-mod statistics;
-pub use statistics::*;
+pub mod statistics;
+
+use enums::*;
+use statistics::*;
 
 pub struct Simulation<T> {
     pub distributions: EnumMap<Event, T>,

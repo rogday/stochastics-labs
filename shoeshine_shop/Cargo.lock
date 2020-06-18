@@ -204,9 +204,9 @@ dependencies = [
 
 [[package]]
 name = "staticvec"
-version = "0.9.2"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33ffaa8b67a2055cea1283041741b6092ec268fef796dfdfabd1d106d71a70a6"
+checksum = "8c0968d58741ac061880be1ca69c5ca6f27a1942ed456f08fd987e9c9013cead"
 
 [[package]]
 name = "syn"

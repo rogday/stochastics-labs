@@ -1,8 +1,8 @@
 use enum_map::EnumMap;
 use itertools::*;
 
-mod enums;
-pub use enums::*;
+pub mod enums;
+use enums::*;
 
 #[rustfmt::skip]
 #[derive(Debug, Default)]

@@ -3,7 +3,7 @@ use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rand_distr::Exp;
 use structopt::StructOpt;
 
-use shoeshine_shop::*;
+use shoeshine_shop::{statistics::enums::*, Simulation};
 
 ///shoe shine shop simulation
 ///
@@ -49,8 +49,8 @@ fn main() {
     assert!(args.tail <= iterations, "Log length can't be greater than number of iterations");
 
     let simulation = Simulation {
-        iterations:    iterations,
-        log_tail:      args.tail,
+        iterations,
+        log_tail: args.tail,
         distributions: enum_map! {
             Event::Arrived        => Exp::new(args.lambda).expect("Exp(λ)"),
             Event::FirstFinished  => Exp::new(args.mu1).expect("Exp(μ1)"),
